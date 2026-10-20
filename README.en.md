@@ -64,6 +64,8 @@ Pinned source snapshots of `leva-vanilla` and `three-stylized` are included unde
 
 Examples read an optional default from `VITE_CESIUM_ION_TOKEN` in `.env.local`; Settings can override or reset it. The token is not included in the npm library output.
 
+Example production builds use browser Web Workers. The workerpool Node.js backends are isolated only in the example build; EdgePages does not need Node builtin polyfills.
+
 ## Project boundaries
 
 ### Use as a Cesium extension

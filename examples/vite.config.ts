@@ -1,6 +1,7 @@
 import { resolve } from "node:path"
 import https from "node:https"
 import { defineConfig, loadEnv, type ProxyOptions } from "vite"
+import { workerpoolBrowser } from "./workerpoolBrowser"
 import {
   TIANDITU_DEV_TILE_PROXY_PREFIX,
   TIANDITU_SUBDOMAINS,
@@ -216,6 +217,7 @@ export default defineConfig(({ mode }) => {
       ],
     },
     plugins: [
+      workerpoolBrowser(),
       {
         name: "earthscene-favicon",
         transformIndexHtml(html) {
@@ -232,6 +234,9 @@ export default defineConfig(({ mode }) => {
         },
       },
     ],
+    worker: {
+      plugins: () => [workerpoolBrowser()],
+    },
     server: {
       fs: {
         allow: [

@@ -10,6 +10,7 @@ import type {
 import workerUrl from './worker?worker&url'
 
 export const WATER_AREA_WORKER_POOL_OPTIONS = {
+  workerType: 'web' as const,
   maxWorkers: 8,
   queueStrategy: 'lifo' as const,
   workerOpts: {

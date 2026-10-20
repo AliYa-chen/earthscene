@@ -158,3 +158,7 @@ VITE_CESIUM_TERRAIN_URL=https://example.com/terrain/
 - 初次大气预计算依赖 GPU，页面无异常但短暂黑屏不等于加载完成；硬件 GPU 与软件渲染的耗时差异很大。
 
 首页体积云视频保存在 `examples/assets/media/volumetric-clouds.mp4`，1080p H.264 / yuv420p，大小限制 18,000,000 字节。封面 `volumetric-clouds-poster.jpg` 来自该视频，由 Vite 与页面一起打包。官网：[earth.2t.hk](https://earth.2t.hk)。
+
+## 浏览器 Worker 构建
+
+水域案例显式使用 `workerType: 'web'`。`examples/workerpoolBrowser.ts` 只隔离 `workerpool` 包内部的 `worker_threads`、`os` 和 `child_process` 引用，主页面与 Worker 两条 Vite 构建链均启用。它不关闭 Vite 的通用警告、不为其它依赖提供 Node polyfill；如果 Node 后端被误用会明确报错。

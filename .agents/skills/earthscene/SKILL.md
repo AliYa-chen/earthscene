@@ -153,3 +153,5 @@ useEffect(() => {
 点云和拾取默认公开测试样本，可通过面板切换自有 Ion 资产。不要重新硬编码当前账户不可访问的私有资产作为默认。昼夜影像夜光使用 NASA GIBS WMTS 自定义矩阵。Leva 的只读提示必须用 `type: 'hint'`，由本项目 vendored 控件实现支持；不把提示降为可编辑字符串。
 
 官网为 `https://earth.2t.hk`，源码仓库为 `https://github.com/AliYa-chen/earthscene`。首页体积云视频使用 `examples/assets/media/` 本地 MP4，必须小于 18,000,000 字节；图片封面同目录，交由 Vite 输出哈希资源。
+
+水域示例的 workerpool 固定使用 Web Worker。只允许通过示例专用 `workerpoolBrowser()` 隔离该包的 Node 后端，主线程与 Worker 构建均须注册；不可全局覆盖其它库的 Node 解析或隐藏 Vite 警告。

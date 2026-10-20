@@ -65,6 +65,8 @@ pnpm build
 
 示例可从 `.env.local` 的 `VITE_CESIUM_ION_TOKEN` 读取默认令牌，右上角设置可覆盖或恢复默认；令牌不进入 npm 库产物。
 
+示例生产构建使用浏览器 Web Worker；`workerpool` 的 Node.js 后端仅在示例构建中隔离，不需要为 EdgePages 添加 Node 内建模块 polyfill。
+
 ## 项目边界
 
 ### 作为 Cesium 扩展使用

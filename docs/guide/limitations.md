@@ -81,3 +81,7 @@ WebGPU 是实验能力，以下能力在 WebGPU 模式下**不渲染或不支持
 - 空间分析（缓冲区、叠加分析、可视域）。
 - 内置轨迹回放、实体/图层时间动画等业务级时间管理。`clock` 是统一场景时间源并自动驱动太阳、月亮和大气；应用可监听其事件驱动业务对象，但 EarthScene 目前不自动绑定这些对象。
 - 地理要素的属性表 UI、图层树 UI（`LayerManager` 只提供数据和状态，不提供界面）。
+
+## 示例的浏览器 Worker
+
+水域示例使用 Web Worker，EdgePages 等静态站点无需支持 Node.js 的 `worker_threads` / `os` / `child_process`。示例构建对 `workerpool` 的这三项后端引用做了局部隔离，库本身不依赖 workerpool；不要通过全局 polyfill 或关闭所有构建警告来处理。
