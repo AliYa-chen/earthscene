@@ -1,4 +1,5 @@
 import { ImageOverlayPlugin } from '3d-tiles-renderer/plugins'
+import type { TilesRenderer } from '3d-tiles-renderer'
 import { Mesh, type BufferAttribute, type Object3D, type Texture } from 'three'
 import { WaterAreaTilesOverlay } from './WaterAreaImageOverlay'
 import {
@@ -17,8 +18,9 @@ type OverlayInternals = {
   pendingTiles: Map<unknown, Object3D>
   tileControllers: Map<unknown, AbortController>
   overlayInfo: Map<WaterAreaTilesOverlay, {
-    tileInfo: Map<unknown, { target: Texture | null; meshInfo: Map<Mesh, { attribute: BufferAttribute }> }>
+    tileInfo: Map<unknown, { target: Texture | null; range: number[] | null; meshInfo: Map<Mesh, { attribute: BufferAttribute }> }>
   }>
+  _onTileVisibilityChange: (event: { tile: unknown; visible: boolean }) => void
   tiles?: { recalculateBytesUsed(tile: unknown): void; dispatchEvent(event: { type: string }): void }
 }
 
@@ -31,6 +33,24 @@ export class WaterAreaOverlayPlugin extends ImageOverlayPlugin {
     // 底图负责几何拆分，水域只复用其几何。
     super({ ...options, enableTileSplitting: false, resolution: 128 } as unknown as ConstructorParameters<typeof ImageOverlayPlugin>[0])
     this.waterAreaOverlays = options.overlays
+  }
+  init(tiles: TilesRenderer): void {
+    ;(ImageOverlayPlugin.prototype as unknown as {
+      init(this: ImageOverlayPlugin, tiles: TilesRenderer): void
+    }).init.call(this, tiles)
+    const internals = this as unknown as OverlayInternals
+    tiles.removeEventListener('tile-visibility-change', internals._onTileVisibilityChange)
+    // 底图释放虚拟子节点时，Fade 可能在本插件清理 tileInfo 后再发显隐事件。
+    // 只替换本实例的继承 listener，保留父级 dispose 的同一字段清理契约。
+    internals._onTileVisibilityChange = ({ tile, visible }) => {
+      internals.overlayInfo.forEach(({ tileInfo }, overlay) => {
+        const info = tileInfo.get(tile)
+        if (info?.range) (overlay as unknown as {
+          setRegionVisible(range: number[], visible: boolean): void
+        }).setRegionVisible(info.range, visible)
+      })
+    }
+    tiles.addEventListener('tile-visibility-change', internals._onTileVisibilityChange)
   }
   _wrapMaterials(scene: Object3D): void {
     const internals = this as unknown as OverlayInternals
