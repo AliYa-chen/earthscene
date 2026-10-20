@@ -1,6 +1,6 @@
 # EarthScene
 
-[官网 / Website](https://earth.2t.hk) · [GitHub](https://github.com/AliYa-chen/earthscene)
+[官网 / Website](https://earth.2t.hk) · [GitHub](https://github.com/AliYa-chen/earthscene) · [npm](https://www.npmjs.com/package/earthscene)
 
 English | [中文](./README.md)
 
