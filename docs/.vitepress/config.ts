@@ -92,6 +92,7 @@ export default ({ command }: ConfigEnv) => defineConfig({
         items: [
           { text: '项目状态', link: '/guide/project-status' },
           { text: 'Cesium 扩展与插件', link: '/guide/cesium-migration' },
+          { text: '水体模块（完整引擎）', link: '/guide/water-area' },
           { text: '快速开始', link: '/guide/getting-started' },
           { text: '从 0.2 迁移到 0.3', link: '/guide/migration-0.3' },
           { text: 'Viewer 基础', link: '/guide/viewer' },

@@ -1,6 +1,6 @@
 {
   "name": "earthscene",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TypeScript 3D Earth engine and modular Cesium extensions for volumetric clouds and geospatial visualization.",
   "type": "module",
   "license": "MIT",
@@ -39,6 +39,10 @@
     "./engine": {
       "types": "./dist/index.d.ts",
       "import": "./dist/engine.js"
+    },
+    "./engine/water": {
+      "types": "./dist/water/index.d.ts",
+      "import": "./dist/water.js"
     }
   },
   "scripts": {

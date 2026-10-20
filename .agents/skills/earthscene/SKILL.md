@@ -1,6 +1,6 @@
 ---
 name: earthscene
-description: Application guidance for EarthScene's default Cesium extensions and optional earthscene/engine Three.js API. Use for ESClouds, ESPluginHost, Viewer init, overlays, terrain, 3D Tiles, models, entities, atmosphere, clouds, postProcess, highlighter, camera, picking, and HISM. Do not use as a source for implementing the earthscene library itself.
+description: Application guidance for EarthScene's default Cesium extensions and optional earthscene/engine Three.js API. Use for ESClouds, ESPluginHost, Viewer init, overlays, terrain, 3D Tiles, models, entities, atmosphere, clouds, WaterArea through earthscene/engine/water, postProcess, highlighter, camera, picking, and HISM. Do not use as a source for implementing the earthscene library itself.
 ---
 
 # EarthScene 应用开发与迁移参考
@@ -39,6 +39,7 @@ Cesium 扩展入口已按 `1.146.0` 做类型与包入口检查；浏览器视�
 - 加载 3D Tiles 或在经纬度放置 glTF 模型（点云可用 Cesium 形 `pointCloudShading`）
 - 绘制点 / 线 / 面实体，以及屏幕空间图标与文字标注
 - 配置大气、光照模式、体积云、后处理
+- 通过 `earthscene/engine/water` 为已有完整引擎 WebGL Viewer 增加水体
 - 相机飞行 / 定位、鼠标交互、拾取、高度采样
 - HISM 大规模实例化（森林、岩石场、多 LOD、实例拾取）
 - 把自定义 Three.js 对象按经纬高放到地球上
@@ -121,6 +122,32 @@ useEffect(() => {
 - **瓦片 LOD 淡入淡出在 WebGPU 下不可用**，瓦片为直接切换。
 - WebGPU **不会在不支持的环境自动回退 WebGL**，应用层需自行检测。
 
+### 6. 水体从按需子入口使用
+
+`0.1.1` 新增 `earthscene/engine/water`。只能接入 `earthscene/engine` 的 WebGL Viewer；默认 Cesium 入口不导出此类，WebGPU 也不支持。先读 `docs/guide/water-area.md`，不要复制 `examples/water-area` 或独立 Demo 的实现进消费项目。
+
+```ts
+import { WaterArea } from 'earthscene/engine/water'
+
+const water = new WaterArea(viewer, {
+  source: { type: 'geojson', data: waterGeoJSON },
+  appearance: { color: '#06172d', waveStrength: 0.44 },
+  optics: { environment: { enabled: true, intensity: 0.7 } },
+})
+water.appearance.waveStrength = 0.6
+water.optics.environment.intensity = 0.8
+// 替换数据时赋一个新来源对象，重新生成掩膜。
+water.source = { type: 'geojson', data: nextWaterGeoJSON }
+const { loadedTiles, waterTiles, failedTiles, destroyed } = water.status
+// 组件卸载：先释放水体，再释放其依附的 Viewer。
+water.destroy()
+viewer.destroy()
+```
+
+`source` 必填；GeoJSON 由应用提供，不内置紫坪铺等业务数据。在线来源可显式写成 `{ type: 'osm', url: 'https://example.com/water/{z}/{x}/{y}.mvt' }`；省略 `url` 使用原 OSM Shortbread 服务，网络与许可由应用核对。失败不阻塞地形，但水面可能缺失，不能用 `loadedTiles` 代替画面验收。
+
+水体材质、法线、原生 Worker 和天空 cubemap 随 npm 包提供，消费项目不需要 `workerpool`、示例的 `workerpoolBrowser()` 插件或源码复制。保留应用自己的地图、令牌与 Viewer 生命周期。水体可与原 WebGL 云、大气同时使用；天空环境倒影不是 SSR，不完整反射建筑、地形或体积云。雨、雪仍未实现，不应声称所有效果均已封装。
+
 ## 能力导航
 
 产出代码前，先判断属于哪个领域，读对应的 reference 文件。**不要一次性把所有 reference 读进上下文**——按需读取，保持精简。
@@ -154,4 +181,4 @@ useEffect(() => {
 
 官网为 `https://earth.2t.hk`，源码仓库为 `https://github.com/AliYa-chen/earthscene`。首页体积云视频使用 `examples/assets/media/` 本地 MP4，必须小于 18,000,000 字节；图片封面同目录，交由 Vite 输出哈希资源。
 
-水域示例的 workerpool 固定使用 Web Worker。只允许通过示例专用 `workerpoolBrowser()` 隔离该包的 Node 后端，主线程与 Worker 构建均须注册；不可全局覆盖其它库的 Node 解析或隐藏 Vite 警告。
+原 `examples/water-area` 示例的 workerpool 固定使用 Web Worker，其示例专用 `workerpoolBrowser()` 仅隔离该包的 Node 后端，主线程与 Worker 构建均须注册；不可全局覆盖其它库的 Node 解析或隐藏 Vite 警告。npm 的 `earthscene/engine/water` 使用随包原生 Worker，消费项目不要照搬这项示例构建适配。

@@ -16,6 +16,10 @@ export const PACKAGE_EXPORTS = {
   './engine': {
     types: './dist/index.d.ts',
     import: './dist/engine.js'
+  },
+  './engine/water': {
+    types: './dist/water/index.d.ts',
+    import: './dist/water.js'
   }
 } as const
 

@@ -57,6 +57,7 @@ function assertPeerDependenciesExternal(): Plugin {
 }
 
 export default defineConfig({
+  base: './',
   plugins: [
     preserveEarthSceneAssetUrls(),
     assertPeerDependenciesExternal()
@@ -65,12 +66,14 @@ export default defineConfig({
   optimizeDeps: {
     include: ['@mapbox/vector-tile', 'pbf']
   },
+  worker: { format: 'es' },
   build: {
     lib: {
       entry: {
         index: 'src/cesium/index.ts',
         engine: 'src/index.ts',
-        assets: 'src/assets.ts'
+        assets: 'src/assets.ts',
+        water: 'src/water/index.ts'
       },
       formats: ['es'],
       fileName: (_format, entryName) => `${entryName}.js`

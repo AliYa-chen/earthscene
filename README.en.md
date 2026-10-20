@@ -44,6 +44,25 @@ const viewer = new earthscene.Viewer('viewer', options)
 
 Peers are optional so one entry does not automatically install the other renderer. The last two utilities are bundled at runtime but are referenced by full-engine declarations. They are not needed for the Cesium entry.
 
+### Add water to the complete engine
+
+Version `0.1.1` adds the optional `earthscene/engine/water` subpath. Its `WaterArea` class provides water color, waves, sun glint and sky-environment reflections for an existing full-engine **WebGL Viewer**, alongside the engine's clouds, atmosphere and clock:
+
+```ts
+import { WaterArea } from 'earthscene/engine/water'
+
+const water = new WaterArea(viewer, {
+  source: { type: 'geojson', data: waterGeoJSON },
+  appearance: { color: '#06172d', waveStrength: 0.44 },
+  optics: { environment: { enabled: true, intensity: 0.7 } },
+})
+water.appearance.waveStrength = 0.6
+water.destroy() // Call before viewer.destroy().
+```
+
+Supply your own `waterGeoJSON`, or explicitly select the online OSM Shortbread source. Materials, normal maps, a native Worker and the sky cubemap are included. Consumers do not need to copy example source, install `workerpool` or add a Vite adapter plugin. No specific map, token or Zipingpu dataset is included. This entry accepts only the complete engine's WebGL Viewer; native Cesium Viewers and WebGPU are unsupported. Sky reflections do not reproduce buildings, terrain or volumetric clouds. Rain and snow remain unimplemented. See the [water guide](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/water-area.md).
+
+
 ## Local development
 
 ```bash
@@ -90,6 +109,7 @@ The package name is `earthscene`, with `0.1.0` as its first public version. Main
 
 - The default npm entry, `earthscene`, and `earthscene/cesium` both map to `src/cesium/index.ts` and expose extensions for native Cesium scenes.
 - `src/index.ts` retains the complete Three.js engine's Viewer and domain APIs, published through `earthscene/engine`; source examples still import from `../src`.
+- `earthscene/engine/water` optionally provides `WaterArea` for the complete engine's WebGL path. The default Cesium entry keeps its existing APIs.
 - The default renderer remains Three.js for now. Assess Cesium support from its implementation and verification results, not from the existing API surface.
 - The project is maintained independently at `AliYa-chen/earthscene`, with `https://earth.2t.hk` as its website. The npm package uses the same `earthscene` name; obsolete deployment and CDN scripts have been removed.
 - Some examples still use external images, models and map services as data sources.

@@ -45,6 +45,25 @@ const viewer = new earthscene.Viewer('viewer', options)
 
 peer 均按需选择，不会因安装 `earthscene` 自动引入另一套渲染器。最后两个工具的运行代码已包含在库构建中，完整引擎的类型声明仍使用其类型。仅 Cesium 入口不需要这些依赖。
 
+### 为完整引擎增加水体
+
+`0.1.1` 增加按需子入口 `earthscene/engine/water`，将水色、波纹、太阳镜面和天空环境倒影封装为 `WaterArea`。它接入已有的完整引擎 **WebGL Viewer**，与原云、大气和时钟配合：
+
+```ts
+import { WaterArea } from 'earthscene/engine/water'
+
+const water = new WaterArea(viewer, {
+  source: { type: 'geojson', data: waterGeoJSON },
+  appearance: { color: '#06172d', waveStrength: 0.44 },
+  optics: { environment: { enabled: true, intensity: 0.7 } },
+})
+water.appearance.waveStrength = 0.6
+water.destroy() // 先于 viewer.destroy() 调用。
+```
+
+`waterGeoJSON` 由应用提供；也可显式选择 OSM Shortbread 在线来源。包内提供材质、法线、原生 Worker 和天空 cubemap，使用方无需复制示例源码、安装 `workerpool` 或添加 Vite 适配插件。不内置特定地图、令牌或紫坪铺数据。该入口仅支持完整引擎 WebGL，不能传入原生 Cesium Viewer，也不支持 WebGPU。天空倒影不包含建筑、地形或体积云的完整反射。雨、雪仍未实现。详细用法见 [水体指南](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/water-area.md)。
+
+
 ## 本地开发
 
 ```bash
@@ -92,6 +111,7 @@ clouds.destroy() // 只释放此扩展的资源。
 
 - npm 默认入口 `earthscene` 与 `earthscene/cesium` 均映射到 `src/cesium/index.ts`，提供可附着于原生 Cesium 场景的扩展。
 - `src/index.ts` 保留完整 Three.js 引擎的 Viewer 与领域 API，通过 `earthscene/engine` 发布；源码示例仍从 `../src` 导入。
+- `earthscene/engine/water` 按需提供完整引擎 WebGL 的 `WaterArea`；默认 Cesium 入口保持原有 API。
 - 默认渲染暂时保留 Three.js。新增 Cesium 能力以源码与验证结果为准，不把现有 API 自动视为已迁移完成。
 - 本项目独立维护于 `AliYa-chen/earthscene`；官网为 `https://earth.2t.hk`。npm 包使用同名 `earthscene`；旧部署和 CDN 脚本已删除。
 - 部分示例仍引用外部图片、模型与地图服务，它们是数据来源。
