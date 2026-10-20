@@ -11,7 +11,7 @@ EarthScene 是一个全新的独立三维地球项目，包名 `earthscene`，�
 - Cesium 子模块面向原生 Cesium API，扩展效果以方法或插件接入；迁移按能力逐项验证，不把现有 Three.js 路径作为单纯归档。
 - 源仓库只作为只读参考，不要回写、提交、发布或部署源仓库。
 - 只使用新项目名称、模块名、CSS 前缀、存储 key 和资源路径。唯一例外是 `third_party/licenses/upstream-MIT.txt`：为保留合法的原始版权与 MIT 条款，此文件必须逐字保留，不得清理其中的原始标识。
-- 本项目公开仓库为 `https://github.com/AliYa-chen/earthscene`，官网为 `https://earth.2t.hk`。尚未发布 npm；旧发布/部署脚本已删除。部署到官网仍需明确任务授权。
+- 本项目公开仓库为 `https://github.com/AliYa-chen/earthscene`，官网为 `https://earth.2t.hk`。npm 包名为 `earthscene`，发布需要通过 `prepublishOnly` 检查；旧部署脚本已删除。部署到官网仍需明确任务授权。
 - 修改 TypeScript 行为后运行 `pnpm type-check`；修改导出或构建链路后运行 `pnpm build`。按影响范围运行必要测试，不为每次小改重复全量检查。
 - 不自行启动示例服务或做浏览器验证，除非用户明确要求。跳过与本次修改有关的验证时，在回复中说明。
 - 用户可见行为、公开路径或示例变化时，同步 `docs/`、`.agents/skills/earthscene/` 和 `README*.md`。

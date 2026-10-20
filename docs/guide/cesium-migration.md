@@ -4,6 +4,8 @@ EarthScene 保留现有项目结构、首页、示例与功能组织。包的根
 
 新增代码优先使用 Cesium 原生的地形、影像、相机、实体与场景 API。适合独立复用的视觉能力以插件形式提供，后续按功能逐项迁移。保留完整源码不代表所有功能已接入 Cesium。
 
+安装：`npm install earthscene cesium@1.146.0`。仅使用此入口不需要 Three.js 或完整引擎的其它 peer 依赖。
+
 ## 将云插件接入原生 Cesium
 
 体积云不要求使用额外的 Viewer 封装。可以把 `VolumetricClouds` 直接安装到已有的 Cesium Viewer：

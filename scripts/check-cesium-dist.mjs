@@ -5,7 +5,8 @@ import { resolve, dirname } from 'node:path'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
-assert.equal(pkg.private, true)
+assert.notEqual(pkg.private, true)
+assert.equal(pkg.publishConfig.access, 'public')
 assert.equal(pkg.exports['./cesium'].types, './dist/cesium/index.d.ts')
 const api = await import(new URL('../dist/cesium.js', import.meta.url))
 assert.equal(typeof api.Viewer, 'function')

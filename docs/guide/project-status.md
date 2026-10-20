@@ -35,4 +35,4 @@ EarthScene 从 `0.1.0` 开始独立维护。完整保留首页、文档、Sandca
 
 ## 外部数据
 
-部分示例仍依赖外部图片、模型、3D Tiles、Cesium Ion、天地图等服务。服务可用性和访问 token 不由本项目保证。这些地址是数据来源。项目官网为 [earth.2t.hk](https://earth.2t.hk)，公开源码在 [GitHub](https://github.com/AliYa-chen/earthscene)；未发布 npm。
+部分示例仍依赖外部图片、模型、3D Tiles、Cesium Ion、天地图等服务。服务可用性和访问 token 不由本项目保证。这些地址是数据来源。项目官网为 [earth.2t.hk](https://earth.2t.hk)，公开源码在 [GitHub](https://github.com/AliYa-chen/earthscene)；npm 包名为 `earthscene`，从 `0.1.0` 开始独立版本。

@@ -9,7 +9,7 @@ description: Application guidance for the default Three.js API and incremental C
 >
 > Cesium 适配与插件通过 `src/cesium/index.ts` / `earthscene/cesium` 单独使用，面向原生 Cesium API；逐项迁移适合的能力，其他效果作为方法库或插件扩展。尚未全量迁移，不能将下文默认 API 自动视为 Cesium 功能。以 `docs/guide/project-status.md` 与各模块实现为准。
 >
-> 本项目版本起点是 0.1.0，尚未发布 npm 包。下文旧版本号仅为继承 API 的历史背景；使用本地源码或本地构建。示例依赖的固定源码已包含在 `vendor/`，不要求外部同级仓库。
+> 本项目版本起点是 0.1.0，npm 包名为 `earthscene`。下文旧版本号仅为继承 API 的历史背景。示例依赖的固定源码已包含在 `vendor/`，不要求外部同级仓库。
 
 下文维护默认 Three.js 入口的 Viewer、影像、地形、3D Tiles、实体、大气、体积云与后处理用法。涉及 Cesium 子模块时，直接核对其导出和原生 Cesium 类型，不套用默认入口的单位或对象结构。
 
@@ -49,7 +49,7 @@ Cesium 扩展入口已按 `1.146.0` 做类型与包入口检查；浏览器视�
 EarthScene 的 `three`、`3d-tiles-renderer` 和 `@takram/*` 是 peer dependency，应用侧必须显式安装：
 
 ```bash
-pnpm add three 3d-tiles-renderer postprocessing \
+pnpm add earthscene three 3d-tiles-renderer postprocessing @mapbox/tiny-sdf three-mesh-bvh \
   @takram/three-geospatial @takram/three-geospatial-effects \
   @takram/three-atmosphere @takram/three-clouds
 # 用 MVT 矢量瓦片时再加（可选）：

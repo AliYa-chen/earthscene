@@ -12,13 +12,6 @@ patchedDependencies:
 importers:
 
   .:
-    dependencies:
-      '@mapbox/tiny-sdf':
-        specifier: ^2.2.0
-        version: 2.2.0
-      three-mesh-bvh:
-        specifier: 0.9.0
-        version: 0.9.0(three@0.184.0)
     devDependencies:
       3d-tiles-renderer:
         specifier: ^0.4.27
@@ -38,6 +31,9 @@ importers:
       '@mapbox/point-geometry':
         specifier: ^1.1.0
         version: 1.1.0
+      '@mapbox/tiny-sdf':
+        specifier: ^2.2.0
+        version: 2.2.0
       '@mapbox/vector-tile':
         specifier: ^2.0.5
         version: 2.0.5
@@ -98,6 +94,9 @@ importers:
       three:
         specifier: ^0.184.0
         version: 0.184.0
+      three-mesh-bvh:
+        specifier: 0.9.0
+        version: 0.9.0(three@0.184.0)
       three-stylized:
         specifier: file:vendor/three-stylized
         version: file:vendor/three-stylized(three@0.184.0)

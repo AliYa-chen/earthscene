@@ -1,4 +1,4 @@
-> EarthScene is maintained independently at `AliYa-chen/earthscene`, with `https://earth.2t.hk` as its website. It has not been published to npm. The default entry and complete example collection still use the existing Three.js implementation; Cesium adapters and plugins are added incrementally through a separate module.
+> EarthScene is maintained independently at `AliYa-chen/earthscene`, with `https://earth.2t.hk` as its website. Its npm package is named `earthscene`. The default entry and complete example collection still use the existing Three.js implementation; Cesium adapters and plugins are added incrementally through a separate module.
 
 # Contributing to EarthScene
 

@@ -1,7 +1,7 @@
 {
   "name": "earthscene",
   "version": "0.1.0",
-  "description": "An independent Cesium-based 3D Earth project with optional Three.js effects and a staged migration from its archived renderer.",
+  "description": "TypeScript 3D Earth engine and modular Cesium extensions for volumetric clouds and geospatial visualization.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://earth.2t.hk",
@@ -54,10 +54,11 @@
     "dev": "node scripts/copy-cesium-assets.mjs && node scripts/dev.mjs",
     "generate:msdf": "node scripts/generate-msdf-atlas.js",
     "changelog": "node actions/generate-changelog.js --dry-run",
-    "release:check": "pnpm type-check && pnpm build && pnpm pack --dry-run",
+    "release:check": "pnpm type-check && pnpm test:run && pnpm build && npm pack --dry-run --ignore-scripts",
     "prepare": "husky",
     "prepare:cesium": "node scripts/copy-cesium-assets.mjs",
-    "test:legacy": "vitest run src/test examples"
+    "test:legacy": "vitest run src/test examples",
+    "prepublishOnly": "pnpm type-check && pnpm test:run && pnpm build"
   },
   "peerDependencies": {
     "3d-tiles-renderer": "^0.4.27",
@@ -69,13 +70,45 @@
     "pbf": "^4.0.1",
     "postprocessing": "6.39.1",
     "three": "^0.184.0",
-    "cesium": "1.146.0"
+    "cesium": "1.146.0",
+    "@mapbox/tiny-sdf": "^2.2.0",
+    "three-mesh-bvh": "0.9.0"
   },
   "peerDependenciesMeta": {
+    "3d-tiles-renderer": {
+      "optional": true
+    },
     "@mapbox/vector-tile": {
       "optional": true
     },
+    "@takram/three-atmosphere": {
+      "optional": true
+    },
+    "@takram/three-clouds": {
+      "optional": true
+    },
+    "@takram/three-geospatial": {
+      "optional": true
+    },
+    "@takram/three-geospatial-effects": {
+      "optional": true
+    },
     "pbf": {
+      "optional": true
+    },
+    "postprocessing": {
+      "optional": true
+    },
+    "three": {
+      "optional": true
+    },
+    "cesium": {
+      "optional": true
+    },
+    "@mapbox/tiny-sdf": {
+      "optional": true
+    },
+    "three-mesh-bvh": {
       "optional": true
     }
   },
@@ -111,11 +144,21 @@
     "vitepress": "^1.6.4",
     "vitest": "^2.1.9",
     "workerpool": "^10.0.3",
-    "cesium": "1.146.0"
-  },
-  "dependencies": {
+    "cesium": "1.146.0",
     "@mapbox/tiny-sdf": "^2.2.0",
     "three-mesh-bvh": "0.9.0"
   },
-  "private": true
+  "keywords": [
+    "cesium",
+    "three",
+    "3d",
+    "globe",
+    "gis",
+    "volumetric-clouds",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

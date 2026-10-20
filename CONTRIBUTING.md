@@ -1,4 +1,4 @@
-> EarthScene 是独立的新项目，公开源码仓库为 `AliYa-chen/earthscene`，官网为 `https://earth.2t.hk`，尚未发布 npm。默认入口与完整示例仍使用现有 Three.js 实现；Cesium 适配与插件通过独立子模块逐项加入。
+> EarthScene 是独立的新项目，公开源码仓库为 `AliYa-chen/earthscene`，官网为 `https://earth.2t.hk`，npm 包名为 `earthscene`。默认入口与完整示例仍使用现有 Three.js 实现；Cesium 适配与插件通过独立子模块逐项加入。
 
 # Contributing to EarthScene
 
