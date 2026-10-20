@@ -7,7 +7,7 @@ const examplesOrigin = (process.env.EARTHSCENE_EXAMPLES_ORIGIN || 'http://127.0.
 export default ({ command }: ConfigEnv) => defineConfig({
   title: 'EarthScene',
   sitemap: { hostname: 'https://earth.2t.hk/docs/' },
-  description: 'An open-source 3D Earth engine for the web, for building digital globes, digital twins, 3D maps, and other geospatial 3D apps on real geographic coordinates and physical scale.',
+  description: 'Modular Cesium extensions for existing viewers, with an optional complete Three.js Earth engine under earthscene/engine.',
   // 图标文件在 examples/public/（站点 origin 根路径）。docs:dev 与 examples 不同端口，走 examples origin。
   head: [
     [
@@ -70,7 +70,7 @@ export default ({ command }: ConfigEnv) => defineConfig({
     nav: [
       { text: '官网', link: 'https://earth.2t.hk' },
       { text: '指南', link: '/guide/getting-started' },
-      { text: 'API', link: '/api/viewer' },
+      { text: '完整引擎 API', link: '/api/viewer' },
       { text: '能力参考', link: '/capabilities/3d-tiles-renderer' },
       {
         text: 'Sandcastle',
@@ -92,7 +92,7 @@ export default ({ command }: ConfigEnv) => defineConfig({
         items: [
           { text: '项目状态', link: '/guide/project-status' },
           { text: 'Cesium 扩展与插件', link: '/guide/cesium-migration' },
-          { text: '继承模块快速开始', link: '/guide/getting-started' },
+          { text: '快速开始', link: '/guide/getting-started' },
           { text: '从 0.2 迁移到 0.3', link: '/guide/migration-0.3' },
           { text: 'Viewer 基础', link: '/guide/viewer' },
           { text: '相机控制', link: '/guide/camera' },
@@ -110,7 +110,7 @@ export default ({ command }: ConfigEnv) => defineConfig({
         ]
       },
       {
-        text: 'API 文档',
+        text: '完整引擎 API',
         items: [
           { text: 'Viewer', link: '/api/viewer' },
           { text: '类型入口', link: '/api/types' }
@@ -123,7 +123,6 @@ export default ({ command }: ConfigEnv) => defineConfig({
         ]
       }
     ],
-    socialLinks: [],
     search: {
       provider: 'local'
     },

@@ -6,7 +6,7 @@
 
 EarthScene 是一个全新的独立三维地球项目。保留完整的首页、文档、Sandcastle、示例和功能组织，在此基础上逐项将适合的能力迁移到 **CesiumJS**；Cesium 不直接提供的渲染效果以方法库或插件扩展，允许使用 **Three.js**。
 
-当前版本从 `0.1.0` 开始。源码、测试、示例与资产已经独立复制并完成命名调整。**默认入口仍使用现有 Three.js 实现，尚未全量迁移到 Cesium。** 新增的 Cesium 适配与效果插件通过 `earthscene/cesium` 单独使用，面向原生 Cesium API；不会替换默认首页或另设默认云场景。具体边界见 [项目状态](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/project-status.md)。
+当前版本从 `0.1.0` 开始。**npm 默认入口 `earthscene` 提供 Cesium 扩展，默认导出为 `ES` 命名空间。** 完整 Three.js 引擎保留在 `earthscene/engine`；现有首页和示例继续使用该实现，尚未全量迁移到 Cesium。`earthscene/cesium` 与默认入口提供同一组扩展 API。具体边界见 [项目状态](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/project-status.md)。
 
 ## 安装到你的项目
 
@@ -17,8 +17,8 @@ npm install earthscene cesium@1.146.0
 ```
 
 ```ts
-import { VolumetricClouds } from 'earthscene/cesium'
-const clouds = new VolumetricClouds(cesiumViewer, { coverage: 0.5 })
+import { ESClouds } from 'earthscene'
+const clouds = new ESClouds(cesiumViewer, { coverage: 0.5 })
 // 销毁扩展，原生 Cesium Viewer 继续运行。
 clouds.destroy()
 ```
@@ -34,6 +34,14 @@ npm install earthscene three@^0.184.0 3d-tiles-renderer@^0.4.27 postprocessing@6
 
 
 TypeScript 用户还需 `npm install -D @types/three@^0.184.1`。
+
+完整引擎从独立子路径导入：
+
+```ts
+import earthscene from 'earthscene/engine'
+
+const viewer = new earthscene.Viewer('viewer', options)
+```
 
 peer 均按需选择，不会因安装 `earthscene` 自动引入另一套渲染器。最后两个工具的运行代码已包含在库构建中，完整引擎的类型声明仍使用其类型。仅 Cesium 入口不需要这些依赖。
 
@@ -61,16 +69,18 @@ pnpm build
 
 ### 作为 Cesium 扩展使用
 
-构建产物中的 `earthscene/cesium` 可直接接入原生 Viewer，无需使用本项目的 Viewer 封装：
+默认入口 `earthscene` 直接接入由应用管理的原生 `Cesium.Viewer`。扩展类使用 EarthScene 的简写 `ES`，该入口不导出 `Viewer`：
 
 ```ts
-import { VolumetricClouds } from 'earthscene/cesium'
+import { ESClouds } from 'earthscene'
 
 // nativeViewer 由应用自己创建、配置和销毁。
-const clouds = new VolumetricClouds(nativeViewer, { coverage: 0.5 })
+const clouds = new ESClouds(nativeViewer, { coverage: 0.5 })
 clouds.options.altitude = 2500
 clouds.destroy() // 只释放此扩展的资源。
 ```
+
+也可使用 `import ES from 'earthscene'` 与 `new ES.Clouds(nativeViewer)`。需要统一管理多个插件时，使用 `new ESPluginHost(nativeViewer)`；它只管理插件，不创建或销毁原生 Viewer。
 
 当前核对版本为 CesiumJS `1.146.0`。插件不导入 Three.js，不替换地形、影像、相机或时钟配置；使用方仍负责 Cesium 的资源部署及场景生命周期。接入方式与限制见 [Cesium 扩展指南](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/cesium-migration.md)。
 
@@ -78,8 +88,8 @@ clouds.destroy() // 只释放此扩展的资源。
 
 ### 保留的工程结构
 
-- 默认包入口为 `src/index.ts`，保留现有 Viewer、领域 API 与完整示例组织。
-- `src/cesium/index.ts` / `earthscene/cesium` 是独立的 Cesium 适配与插件入口，可在原生 Cesium 场景中使用；已有能力按模块逐项迁移。
+- npm 默认入口 `earthscene` 与 `earthscene/cesium` 均映射到 `src/cesium/index.ts`，提供可附着于原生 Cesium 场景的扩展。
+- `src/index.ts` 保留完整 Three.js 引擎的 Viewer 与领域 API，通过 `earthscene/engine` 发布；源码示例仍从 `../src` 导入。
 - 默认渲染暂时保留 Three.js。新增 Cesium 能力以源码与验证结果为准，不把现有 API 自动视为已迁移完成。
 - 本项目独立维护于 `AliYa-chen/earthscene`；官网为 `https://earth.2t.hk`。npm 包使用同名 `earthscene`；旧部署和 CDN 脚本已删除。
 - 部分示例仍引用外部图片、模型与地图服务，它们是数据来源。

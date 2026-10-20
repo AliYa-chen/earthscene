@@ -11,10 +11,10 @@
 | 范围 | 当前实现 | 尚未完成的工作 |
 | --- | --- | --- |
 | 完整首页、示例与领域 API | 默认 `src/index.ts` 继续使用既有 Three.js 实现 | 按领域接入 Cesium，并逐个验证示例 |
-| Cesium 子模块 | `src/cesium/index.ts` 导出轻量 Viewer、插件契约和体积云 | 不构成现有全部领域 API 的兼容替代 |
-| Cesium Viewer | `src/cesium/Viewer.ts` 创建原生 Viewer，保留原生构造选项，以 `.raw` 访问原生能力 | 尚未迁入既有相机、影像、地形等门面 |
+| Cesium 子模块 | `src/cesium/index.ts` 导出 ES 命名的插件管理器、插件契约和体积云 | 不构成现有全部领域 API 的兼容替代 |
+| Cesium Viewer | `src/cesium/ESPluginHost.ts` 关联调用方已有的原生 Viewer，只负责管理插件资源 | 尚未迁入既有相机、影像、地形等门面 |
 | 插件生命周期 | `src/cesium/Plugin.ts` 定义安装结果及销毁契约；适配器支持安装、去重、移除和逆序销毁 | 各插件仍须负责安装失败时的部分资源清理 |
-| Cesium 体积云 | `src/cesium/VolumetricClouds.ts` 已编写两阶段后处理与参数控制 | 视觉质量、复杂深度、设备性能与原效果一致性仍需验收 |
+| Cesium 体积云 | `src/cesium/ESClouds.ts` 已编写两阶段后处理与参数控制 | 视觉质量、复杂深度、设备性能与原效果一致性仍需验收 |
 | 插件工厂 | `src/cesium/plugins/volumetricClouds.ts` 将云封装为可选插件 | 后续效果按相同边界接入 |
 
 没有新增单独的云 HTML 入口，也没有把完整首页替换为云演示。现有目录名称、历史架构记录或示例数量不能作为 Cesium 全量迁移的证据。面向使用者的项目范围以[项目状态](../../docs/guide/project-status.md)为准。
@@ -82,9 +82,9 @@ Cesium 的 `CloudCollection` 适合云状物体展示，但不提供本项目所
 
 ## 当前 Cesium 插件机制
 
-`src/cesium/Viewer.ts` 仅增加必要的生命周期管理。原生 Viewer 保存在 `.raw`，默认使用椭球地形且不自动请求 Ion 影像或地形；调用者可以通过原生选项显式提供数据。
+`src/cesium/ESPluginHost.ts` 只接收调用方已有的原生 Viewer，以 `cesiumViewer` 保存引用。它不创建、不修改、不销毁原生场景，只增加可选插件的生命周期管理。
 
-`CesiumPlugin.install(nativeViewer)` 返回 `{ value, destroy }`。插件获得的是原生 Cesium Viewer，因此既可通过项目适配器安装，也可由应用直接管理其运行时对象。适配器按 `id` 阻止重复安装，移除时调用插件销毁，在整个 Viewer 销毁前逆序释放插件。
+`CesiumPlugin.install(nativeViewer)` 返回 `{ value, destroy }`。插件获得的是原生 Cesium Viewer，因此既可通过项目适配器安装，也可由应用直接管理其运行时对象。适配器按 `id` 阻止重复安装，移除时调用插件销毁，销毁宿主时逆序释放插件，原生 Viewer 继续由调用方管理。
 
 新效果应遵循以下责任划分：
 
@@ -98,13 +98,13 @@ Cesium 的 `CloudCollection` 适合云状物体展示，但不提供本项目所
 
 ### 已编写的处理流程
 
-`VolumetricClouds` 使用 Cesium 的公开后处理类，不创建第二个 WebGL 上下文，也不导入 Three.js。
+`ESClouds` 使用 Cesium 的公开后处理类，不创建第二个 WebGL 上下文，也不导入 Three.js。
 
 第一阶段在可配置分辨率下计算云颜色与透明度：按椭球外壳求交，读取不透明场景距离，采样程序化三维噪声，沿太阳方向进行少量额外采样，使用透射率积分。它没有依赖既有云的二进制噪声素材。
 
 第二阶段从阶段名称引用云缓冲，执行四点深度感知放大并合成到原生场景颜色；可选估算可见地面云影、近似雾以及雾中的受云遮挡太阳散射。两个阶段放入 `PostProcessStageComposite`，通过 `inputPreviousStageTexture: false` 保留原生场景作为合成背景。
 
-质量分为 low、medium、high、ultra，分别使用 32、56、88、128 次主采样以及 0.4、0.5、0.75、1.0 倍缓冲分辨率。质量变化重建插件阶段，不重建原生 Viewer。参数每帧归一化；风产生运动时请求下一帧，只有 3D 模式启用效果。
+质量分为 low、medium、high、ultra，分别使用 32、56、88、128 次主采样。云缓冲固定为半分辨率，质量变化只改采样 uniform，保持使用方其它后处理的顺序与实例不变。参数每帧归一化；风产生运动时请求下一帧，只有 3D 模式启用效果。
 
 ### 球壳与深度
 

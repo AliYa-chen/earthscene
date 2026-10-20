@@ -16,7 +16,7 @@ export interface InstalledPlugin<T> {
  * An optional plugin depending only on a native Cesium Viewer.
  */
 export interface CesiumPlugin<T = unknown> {
-  /** 当前场景内唯一的插件标识。 / A plugin identifier unique within the scene. */
+  /** 同一管理器内唯一的插件标识。 / A plugin identifier unique within its host. */
   readonly id: string
   /** 安装插件；失败时由插件清理部分初始化资源。 / Install; clean up partial initialization on failure. */
   install(viewer: Viewer): InstalledPlugin<T>

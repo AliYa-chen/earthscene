@@ -22,10 +22,10 @@
   ],
   "main": "./dist/index.js",
   "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/cesium/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./dist/cesium/index.d.ts",
       "import": "./dist/index.js"
     },
     "./assets": {
@@ -34,7 +34,11 @@
     },
     "./cesium": {
       "types": "./dist/cesium/index.d.ts",
-      "import": "./dist/cesium.js"
+      "import": "./dist/index.js"
+    },
+    "./engine": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/engine.js"
     }
   },
   "scripts": {

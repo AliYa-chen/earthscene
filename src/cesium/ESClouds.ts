@@ -1,6 +1,8 @@
 import {
   Cartesian3,
   Ellipsoid,
+  OrthographicFrustum,
+  OrthographicOffCenterFrustum,
   PostProcessStage,
   PostProcessStageComposite,
   PostProcessStageSampleMode,
@@ -9,8 +11,8 @@ import {
 } from 'cesium'
 
 /**
- * 云的渲染质量；控制采样次数和云缓冲分辨率。
- * Cloud quality, controlling ray samples and the cloud buffer resolution.
+ * 云的渲染质量；控制采样次数；云缓冲固定为半分辨率。
+ * Cloud quality, controlling ray samples; the cloud buffer remains at half resolution.
  */
 export type CloudQuality = 'low' | 'medium' | 'high' | 'ultra'
 
@@ -58,14 +60,16 @@ const defaults: CloudOptions = {
 }
 
 const presets = {
-  low: { scale: 0.4, samples: 32, lightSamples: 3 },
-  medium: { scale: 0.5, samples: 56, lightSamples: 4 },
-  high: { scale: 0.75, samples: 88, lightSamples: 5 },
-  ultra: { scale: 1, samples: 128, lightSamples: 6 },
+  low: { samples: 32, lightSamples: 3 },
+  medium: { samples: 56, lightSamples: 4 },
+  high: { samples: 88, lightSamples: 5 },
+  ultra: { samples: 128, lightSamples: 6 },
 } as const
 
 // Work in kilometers to keep ECEF arithmetic away from meter-scale large numbers.
 // No shader below depends on renderer internals or a second WebGL context.
+const CLOUD_TEXTURE_SCALE = 0.5
+
 const sharedShader = /* glsl */ `
 uniform sampler2D depthTexture;
 uniform vec3 u_cameraKm;
@@ -293,10 +297,10 @@ function finiteClamp(value: number, fallback: number, min: number, max: number):
  * 使用 Cesium 公共后处理接口渲染球壳体积云，支持地形深度遮挡。
  * Render ellipsoidal volumetric clouds with terrain depth occlusion using public Cesium APIs.
  */
-export class VolumetricClouds {
+export class ESClouds {
   /**
-   * 可直接修改的运行时参数；每帧读取，质量变化会重建云缓冲。
-   * Mutable runtime options, read every frame; quality changes rebuild cloud buffers.
+   * 可直接修改的运行时参数；每帧读取，质量变化只调整采样，不改变其它后处理的顺序。
+   * Mutable runtime options, read every frame; quality changes adjust samples without reordering other stages.
    */
   readonly options: CloudOptions
   private readonly cameraKm = new Cartesian3()
@@ -304,7 +308,6 @@ export class VolumetricClouds {
   private readonly windKm = new Cartesian3()
   private readonly cloudTexel = new Cartesian3()
   private composite: PostProcessStageComposite | undefined
-  private appliedQuality: CloudQuality | undefined
   private removePostUpdate: (() => void) | undefined
   private lastFrameTime = performance.now()
   private lastOptions = ''
@@ -315,20 +318,27 @@ export class VolumetricClouds {
    * Attach cloud stages to an existing Cesium Viewer without taking over its camera, clock, or atmosphere.
    */
   constructor(private readonly viewer: Viewer, options: Partial<CloudOptions> = {}) {
+    if (viewer.isDestroyed()) throw new Error('Cannot attach to a destroyed Cesium Viewer.')
     this.options = { ...defaults, ...options }
     const scene = viewer.scene
     Cartesian3.multiplyByScalar((scene.globe?.ellipsoid ?? Ellipsoid.WGS84).radii, 0.001, this.radiiKm)
     this.normalizeOptions()
-    this.rebuild()
-    this.update()
-    this.removePostUpdate = scene.postUpdate.addEventListener(() => this.update())
+    try {
+      this.attachStages()
+      this.update()
+      this.removePostUpdate = scene.postUpdate.addEventListener(() => this.update())
+    } catch (error) {
+      this.destroy()
+      throw error
+    }
   }
 
   /**
-   * 切换质量；仅重建云阶段，保留 Cesium 场景。
-   * Change quality by rebuilding only the cloud stages, preserving the Cesium scene.
+   * 切换采样质量，不重建阶段或调整使用方的后处理顺序。
+   * Change sampling quality without rebuilding stages or reordering application effects.
    */
   setQuality(quality: CloudQuality): void {
+    if (this.destroyed) throw new Error('ESClouds has been destroyed.')
     if (!Object.prototype.hasOwnProperty.call(presets, quality)) {
       throw new RangeError(`Unknown cloud quality: ${quality}`)
     }
@@ -363,7 +373,6 @@ export class VolumetricClouds {
   private update(): void {
     if (this.destroyed) return
     this.normalizeOptions()
-    if (this.appliedQuality !== this.options.quality) this.rebuild()
     const scene = this.viewer.scene
     const now = performance.now()
     const delta = Math.min((now - this.lastFrameTime) * 0.001, 0.1)
@@ -371,11 +380,13 @@ export class VolumetricClouds {
     this.windKm.x = (this.windKm.x + this.options.windSpeed * delta * 0.001) % 4096
     this.windKm.y = this.windKm.x * 0.37
     Cartesian3.multiplyByScalar(this.viewer.camera.positionWC, 0.001, this.cameraKm)
-    const scale = presets[this.options.quality].scale
+    const scale = CLOUD_TEXTURE_SCALE
     this.cloudTexel.x = 1 / Math.max(1, Math.ceil(scene.drawingBufferWidth * scale))
     this.cloudTexel.y = 1 / Math.max(1, Math.ceil(scene.drawingBufferHeight * scale))
     if (this.composite) {
       this.composite.enabled = this.options.enabled && scene.mode === SceneMode.SCENE3D
+        && !(this.viewer.camera.frustum instanceof OrthographicFrustum)
+        && !(this.viewer.camera.frustum instanceof OrthographicOffCenterFrustum)
         && this.viewer.camera.positionCartographic.height < 100000
     }
     const snapshot = JSON.stringify(this.options)
@@ -385,9 +396,8 @@ export class VolumetricClouds {
     }
   }
 
-  private rebuild(): void {
+  private attachStages(): void {
     const scene = this.viewer.scene
-    const quality = presets[this.options.quality]
     const name = `earthscene-clouds-${nextId++}`
     const sharedUniforms = {
       u_cameraKm: () => this.cameraKm,
@@ -398,14 +408,14 @@ export class VolumetricClouds {
       u_coverage: () => this.options.coverage,
       u_detail: () => Number(this.options.detail),
       u_turbulence: () => Number(this.options.turbulence),
-      u_lightSamples: quality.lightSamples,
+      u_lightSamples: () => presets[this.options.quality].lightSamples,
     }
     const clouds = new PostProcessStage({
       name,
       fragmentShader: cloudShader,
-      textureScale: quality.scale,
+      textureScale: CLOUD_TEXTURE_SCALE,
       sampleMode: PostProcessStageSampleMode.LINEAR,
-      uniforms: { ...sharedUniforms, u_samples: quality.samples },
+      uniforms: { ...sharedUniforms, u_samples: () => presets[this.options.quality].samples },
     })
     const combine = new PostProcessStage({
       name: `${name}-composite`,
@@ -426,8 +436,6 @@ export class VolumetricClouds {
       inputPreviousStageTexture: false,
     })
     scene.postProcessStages.add(replacement)
-    if (this.composite) scene.postProcessStages.remove(this.composite)
     this.composite = replacement
-    this.appliedQuality = this.options.quality
   }
 }

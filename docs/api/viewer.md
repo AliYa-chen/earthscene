@@ -1,10 +1,12 @@
-> 实现范围：本文描述当前默认 Three.js 入口；其中的 API 和能力不表示已由 Cesium 实现。独立 Cesium 子模块与迁移范围见[项目状态](/guide/project-status)。
+> 实现范围：本文描述完整 Three.js 引擎入口 `earthscene/engine`；其中的 API 和能力不表示已由 Cesium 实现。npm 默认入口 `earthscene` 提供 Cesium 扩展，接入方式见[Cesium 扩展指南](/guide/cesium-migration)。
 
 # Viewer API
 
-`Viewer` 是 EarthScene 的主要公开类。
+`Viewer` 是完整 Three.js 引擎入口 `earthscene/engine` 的公开类。npm 默认 Cesium 扩展入口 `earthscene` 不导出此类。
 
 ```ts
+import earthscene from 'earthscene/engine'
+
 const viewer = new earthscene.Viewer(container, options)
 const viewerById = new earthscene.Viewer('viewer', options)
 

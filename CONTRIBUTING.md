@@ -1,4 +1,4 @@
-> EarthScene 是独立的新项目，公开源码仓库为 `AliYa-chen/earthscene`，官网为 `https://earth.2t.hk`，npm 包名为 `earthscene`。默认入口与完整示例仍使用现有 Three.js 实现；Cesium 适配与插件通过独立子模块逐项加入。
+> EarthScene 是独立的新项目，公开源码仓库为 `AliYa-chen/earthscene`，官网为 `https://earth.2t.hk`，npm 包名为 `earthscene`。npm 默认入口与 `earthscene/cesium` 提供 Cesium 扩展；完整 Three.js 引擎通过 `earthscene/engine` 提供，首页与现有示例继续使用该实现。
 
 # Contributing to EarthScene
 
@@ -41,7 +41,7 @@ pnpm install
 
 ## 🗂️ 项目结构
 
-- `src/`：现有默认实现和公开 API；`src/cesium/` 为独立的 Cesium 适配与插件。
+- `src/index.ts`：完整 Three.js 引擎与公开 API，对应 `earthscene/engine`；`src/cesium/index.ts` 为 npm 默认入口及 `earthscene/cesium` 的扩展 API。
 - `vendor/`：示例依赖的固定源码和来源记录。
 - `examples/`：独立示例、主页和 Sandcastle。
 - `docs/`：面向使用者的指南、API 和能力说明。

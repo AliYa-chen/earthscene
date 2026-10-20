@@ -1,4 +1,4 @@
-> 实现范围：本文描述当前默认 Three.js 入口；其中的 API 和能力不表示已由 Cesium 实现。独立 Cesium 子模块与迁移范围见[项目状态](/guide/project-status)。
+> 实现范围：本文描述完整 Three.js 引擎入口 `earthscene/engine`；其中的 API 和能力不表示已由 Cesium 实现。npm 默认入口 `earthscene` 提供 Cesium 扩展，接入方式见[Cesium 扩展指南](/guide/cesium-migration)。
 
 # HISM 大规模实例化
 
@@ -14,7 +14,7 @@ HISM（Hierarchical Instanced Static Mesh）是 EarthScene 内置的大规模静
 ## 快速上手
 
 ```ts
-import earthscene, { createWindSwayLeavesMaterial, type HismArchetype } from 'earthscene'
+import earthscene, { createWindSwayLeavesMaterial, type HismArchetype } from 'earthscene/engine'
 import * as THREE from 'three'
 
 const viewer = new earthscene.Viewer('viewer', {
@@ -92,7 +92,7 @@ EarthScene 按**簇中心到相机**的距离选择 LOD 级别。`maxDistanceMet
 ez-tree 等程序化植被的叶片风摆可通过 `createWindSwayLeavesMaterial` 接入 HISM。材质会自动挂载 EarthScene Position Pipeline，与 RTC 实例化 stage 组合：
 
 ```ts
-import { createWindSwayLeavesMaterial } from 'earthscene'
+import { createWindSwayLeavesMaterial } from 'earthscene/engine'
 
 const leavesMaterial = createWindSwayLeavesMaterial({
   map: ezLeavesMaterial.map,

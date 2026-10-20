@@ -1,8 +1,8 @@
-export const PACKAGE_TYPES = './dist/index.d.ts'
+export const PACKAGE_TYPES = './dist/cesium/index.d.ts'
 
 export const PACKAGE_EXPORTS = {
   '.': {
-    types: './dist/index.d.ts',
+    types: './dist/cesium/index.d.ts',
     import: './dist/index.js'
   },
   './assets': {
@@ -11,7 +11,11 @@ export const PACKAGE_EXPORTS = {
   },
   './cesium': {
     types: './dist/cesium/index.d.ts',
-    import: './dist/cesium.js'
+    import: './dist/index.js'
+  },
+  './engine': {
+    types: './dist/index.d.ts',
+    import: './dist/engine.js'
   }
 } as const
 

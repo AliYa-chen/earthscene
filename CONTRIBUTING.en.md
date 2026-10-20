@@ -1,4 +1,4 @@
-> EarthScene is maintained independently at `AliYa-chen/earthscene`, with `https://earth.2t.hk` as its website. Its npm package is named `earthscene`. The default entry and complete example collection still use the existing Three.js implementation; Cesium adapters and plugins are added incrementally through a separate module.
+> EarthScene is maintained independently at `AliYa-chen/earthscene`, with `https://earth.2t.hk` as its website. Its npm package is named `earthscene`. The default npm entry and `earthscene/cesium` expose Cesium extensions; `earthscene/engine` provides the complete Three.js engine, still used by the homepage and existing examples.
 
 # Contributing to EarthScene
 
@@ -41,7 +41,7 @@ Common commands:
 
 ## 🗂️ Project structure
 
-- `src/`: The default implementation and public APIs; `src/cesium/` contains the separate Cesium adapters and plugins.
+- `src/index.ts`: The complete Three.js engine and public APIs, published as `earthscene/engine`; `src/cesium/index.ts` supplies the default npm entry and `earthscene/cesium` extension APIs.
 - `vendor/`: Pinned example dependency source and provenance.
 - `examples/`: Standalone examples, the homepage, and Sandcastle.
 - `docs/`: User-facing guides, API documentation, and capability references.

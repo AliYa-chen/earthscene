@@ -1,16 +1,15 @@
-import { Viewer } from "./Viewer"
-import { VolumetricClouds } from "./VolumetricClouds"
-import { volumetricClouds } from "./plugins/volumetricClouds"
+import { ESPluginHost } from './ESPluginHost'
+import { ESClouds } from './ESClouds'
+import { esClouds } from './plugins/esClouds'
 
-export { Viewer, VolumetricClouds, volumetricClouds }
-export type { ViewerOptions } from "./Viewer"
-export type { CloudOptions, CloudQuality } from "./VolumetricClouds"
-export type { CesiumPlugin, InstalledPlugin } from "./Plugin"
+export { ESPluginHost, ESClouds, esClouds }
+export type { CloudOptions, CloudQuality } from './ESClouds'
+export type { CesiumPlugin, InstalledPlugin } from './Plugin'
 
 /**
- * EarthScene 的 Cesium 入口。
- * The Cesium entry point for EarthScene.
+ * EarthScene 扩展命名空间；只接入已有 Cesium 场景，不创建或替换 Viewer。
+ * EarthScene extension namespace; attaches to existing Cesium scenes without creating or replacing a Viewer.
  */
-const EarthScene = { Viewer, VolumetricClouds, volumetricClouds }
+export const ES = { Clouds: ESClouds, PluginHost: ESPluginHost, clouds: esClouds }
 
-export default EarthScene
+export default ES

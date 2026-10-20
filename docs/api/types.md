@@ -1,8 +1,8 @@
-> 实现范围：本文描述当前默认 Three.js 入口；其中的 API 和能力不表示已由 Cesium 实现。独立 Cesium 子模块与迁移范围见[项目状态](/guide/project-status)。
+> 实现范围：本文描述完整 Three.js 引擎入口 `earthscene/engine`；其中的 API 和能力不表示已由 Cesium 实现。npm 默认入口 `earthscene` 提供 Cesium 扩展，接入方式见[Cesium 扩展指南](/guide/cesium-migration)。
 
 # 类型入口
 
-EarthScene 的类型入口是 `dist/index.d.ts`，源码中的公开类型主要从 `src/types.ts` 导出。
+完整 Three.js 引擎的类型通过 `earthscene/engine` 导入，对应源码 `src/index.ts`，配置类型主要来自 `src/types.ts`。npm 默认 `earthscene` 入口则导出 Cesium 扩展的 `CloudOptions`、`CloudQuality`、`CesiumPlugin` 和 `InstalledPlugin` 等类型，见 [Cesium 扩展指南](../guide/cesium-migration.md)。
 
 ## Viewer 配置
 
@@ -33,7 +33,7 @@ EarthScene 的类型入口是 `dist/index.d.ts`，源码中的公开类型主要
 - `LonLat` / `LonLatHeight` / `LonLatLike` / `LonLatHeightLike`
 - `CameraDestination` / `CameraSetViewOptions` / `ViewerControls`
 
-底层 Three.js renderer 实例类型也从 `earthscene` 导出，用于在外部渲染循环或自定义 pass 中直接操作 renderer：
+底层 Three.js renderer 实例类型也从 `earthscene/engine` 导出，用于在外部渲染循环或自定义 pass 中直接操作 renderer：
 
 - `EarthSceneRenderer`：`EarthSceneWebGLRenderer | EarthSceneWebGPURenderer` 的联合类型。
 - `EarthSceneWebGLRenderer`：WebGL 模式下的 renderer（带 EarthScene 效果扩展的 `WebGLRenderer`）。

@@ -5,7 +5,7 @@
 ## 初始化 Viewer
 
 ```ts
-import earthscene from 'earthscene'
+import earthscene from 'earthscene/engine'
 
 const viewer = new earthscene.Viewer('viewer', {
   // 初始影像图层（数组顺序 = 从下到上绘制）
@@ -413,7 +413,7 @@ viewer.entities.add({
 面向森林、岩石场等大量重复静态 mesh。EarthScene 负责簇分桶、视锥剔除、LOD、RTC 定位与 BVH 拾取。
 
 ```ts
-import earthscene, { createWindSwayLeavesMaterial, type HismArchetype } from 'earthscene'
+import earthscene, { createWindSwayLeavesMaterial, type HismArchetype } from 'earthscene/engine'
 
 const layer = viewer.addHismLayer({
   id: 'forest',

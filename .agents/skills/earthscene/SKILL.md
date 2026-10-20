@@ -1,27 +1,29 @@
 ---
 name: earthscene
-description: Application guidance for the default Three.js API and incremental Cesium adapters/plugins. Use for Viewer init, overlays, terrain, 3D Tiles, models, entities, atmosphere, clouds, postProcess, highlighter, camera, picking, and HISM. Do not use as a source for implementing the earthscene library itself.
+description: Application guidance for EarthScene's default Cesium extensions and optional earthscene/engine Three.js API. Use for ESClouds, ESPluginHost, Viewer init, overlays, terrain, 3D Tiles, models, entities, atmosphere, clouds, postProcess, highlighter, camera, picking, and HISM. Do not use as a source for implementing the earthscene library itself.
 ---
 
 # EarthScene 应用开发与迁移参考
 
-> EarthScene 是完整的独立项目，默认入口 `src/index.ts` / `earthscene` 仍使用现有 Three.js 实现，保留首页、文档、Sandcastle 和完整示例。`pnpm dev` 使用 `scripts/dev.mjs`。不要改成独立的默认云场景，也不要把迁移提示放入核心产品流程。
+> EarthScene 的 npm 默认入口 `earthscene` 提供 Cesium 扩展，默认导出为 `ES` 命名空间。完整 Three.js 引擎通过 `earthscene/engine` 单独发布，源码仍为 `src/index.ts`；首页、Sandcastle 和现有示例继续使用该实现，源码示例的 `../src` 不等同于 npm 默认入口。`pnpm dev` 使用 `scripts/dev.mjs`。
 >
-> Cesium 适配与插件通过 `src/cesium/index.ts` / `earthscene/cesium` 单独使用，面向原生 Cesium API；逐项迁移适合的能力，其他效果作为方法库或插件扩展。尚未全量迁移，不能将下文默认 API 自动视为 Cesium 功能。以 `docs/guide/project-status.md` 与各模块实现为准。
+> `earthscene` 与 `earthscene/cesium` 均来自 `src/cesium/index.ts`，接入原生 Cesium API；逐项迁移适合的能力，其他效果作为方法库或插件扩展。尚未全量迁移，不能将下文完整引擎 API 自动视为 Cesium 功能。以 `docs/guide/project-status.md` 与各模块实现为准。
 >
 > 本项目版本起点是 0.1.0，npm 包名为 `earthscene`。下文旧版本号仅为继承 API 的历史背景。示例依赖的固定源码已包含在 `vendor/`，不要求外部同级仓库。
 
-下文维护默认 Three.js 入口的 Viewer、影像、地形、3D Tiles、实体、大气、体积云与后处理用法。涉及 Cesium 子模块时，直接核对其导出和原生 Cesium 类型，不套用默认入口的单位或对象结构。
+下文主要维护 `earthscene/engine` 的 Viewer、影像、地形、3D Tiles、实体、大气、体积云与后处理用法。涉及 npm 默认 Cesium 扩展时，直接核对其导出和原生 Cesium 类型，不套用完整引擎的单位或对象结构。
 
 原生 Cesium 应用可直接使用扩展，不需要创建第二个 Viewer：
 
 ```ts
-import { VolumetricClouds } from 'earthscene/cesium'
-const clouds = new VolumetricClouds(nativeViewer, { coverage: 0.5 })
+import { ESClouds } from 'earthscene'
+const clouds = new ESClouds(nativeViewer, { coverage: 0.5 })
 // 原生 Cesium 的 terrainProvider、imageryLayers、camera、clock 仍由应用管理。
 clouds.options.coverage = 0.7
 clouds.destroy()
 ```
+
+默认入口及 Cesium 子入口的扩展类统一使用 `ES` 前缀，不导出 `Viewer`。`import ES from 'earthscene'` 可写成 `new ES.Clouds(nativeViewer)`；需要统一管理多个插件时，使用 `new ESPluginHost(nativeViewer)` 与 `host.use(esClouds(options))`。插件管理器仅附着到已有原生 Viewer，`host.destroy()` 只释放插件，原生 Viewer 的创建和销毁仍由应用负责。完整引擎的 `new earthscene.Viewer(...)` 必须从 `earthscene/engine` 导入，不用于 Cesium 接入示例。
 
 Cesium 扩展入口已按 `1.146.0` 做类型与包入口检查；浏览器视觉效果需单独验证。插件只释放自身资源；使用方必须在销毁原生 Viewer 前显式销毁手动安装的插件。完整说明见 `docs/guide/cesium-migration.md`。
 
@@ -31,7 +33,8 @@ Cesium 扩展入口已按 `1.146.0` 做类型与包入口检查；浏览器视�
 
 当用户在做以下任何一件事时启用：
 
-- 初始化 `earthscene.Viewer`、配置场景 / 相机 / 渲染器
+- 向已有原生 Cesium Viewer 安装 `ESClouds` 或管理 EarthScene 插件
+- 通过 `earthscene/engine` 初始化 `earthscene.Viewer`、配置场景 / 相机 / 渲染器
 - 加载或切换地形、影像图层（XYZ / WMS / WMTS / MVT / GeoJSON / Cesium Ion）
 - 加载 3D Tiles 或在经纬度放置 glTF 模型（点云可用 Cesium 形 `pointCloudShading`）
 - 绘制点 / 线 / 面实体，以及屏幕空间图标与文字标注
@@ -46,7 +49,18 @@ Cesium 扩展入口已按 `1.146.0` 做类型与包入口检查；浏览器视�
 
 ### 1. 安装与导入
 
-EarthScene 的 `three`、`3d-tiles-renderer` 和 `@takram/*` 是 peer dependency，应用侧必须显式安装：
+使用默认 Cesium 扩展入口：
+
+```bash
+npm install earthscene cesium@1.146.0
+```
+
+```ts
+import ES, { ESClouds, ESPluginHost, esClouds } from 'earthscene'
+// earthscene/cesium 提供相同导出；无需安装 Three.js。
+```
+
+使用 `earthscene/engine` 时，`three`、`3d-tiles-renderer` 和 `@takram/*` 等是按需 peer dependency，应用侧必须显式安装：
 
 ```bash
 pnpm add earthscene three 3d-tiles-renderer postprocessing @mapbox/tiny-sdf three-mesh-bvh \
@@ -56,12 +70,12 @@ pnpm add earthscene three 3d-tiles-renderer postprocessing @mapbox/tiny-sdf thre
 npm install @mapbox/vector-tile pbf
 ```
 
-导入：默认导出 `earthscene` 对象 + 命名导出类 / 类型。
+完整引擎导入：默认导出 `earthscene` 对象 + 命名导出类 / 类型。
 
 ```ts
-import earthscene from '../src'
+import earthscene from 'earthscene/engine'
 // 也可按需导入类型
-import type { ViewerOptions, ImageryLayerOptions } from '../src'
+import type { ViewerOptions, ImageryLayerOptions } from 'earthscene/engine'
 ```
 
 ### 2. 单位与坐标系（高频踩坑点）

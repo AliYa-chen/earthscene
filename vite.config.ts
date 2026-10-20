@@ -68,8 +68,8 @@ export default defineConfig({
   build: {
     lib: {
       entry: {
-        index: 'src/index.ts',
-        cesium: 'src/cesium/index.ts',
+        index: 'src/cesium/index.ts',
+        engine: 'src/index.ts',
         assets: 'src/assets.ts'
       },
       formats: ['es'],
