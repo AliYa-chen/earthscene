@@ -1,0 +1,213 @@
+> EarthScene 实现说明：本文记录当前默认 Three.js 入口的完整示例架构。Cesium 适配与插件通过独立子模块逐项加入；新项目尚无发布/部署目标，旧站点与版本陈述只作历史背景。当前能力见 `docs/guide/project-status.md`。
+
+# examples 架构说明
+
+> 2026-09-09 复核范围：静态核对 package scripts、资源配置、Sandcastle runner/app 和 runtime bindings；构建期体积预算已取消。没有启动站点或重跑站点构建。
+
+
+本文记录 `examples/` 目录的项目级架构。这里的内容面向维护者，不属于面向用户发布的文档页。
+
+`examples/` 同时承担三个展示入口：
+
+- 项目主页：`examples/index.html`
+- 项目文档页：`docs/` 通过 VitePress 构建到 `examples/public/docs/`
+- 项目 Sandcastle：`examples/sandcastle.html` 和 `examples/sandcastle/`
+
+这三部分在开发时可以通过根目录 `pnpm dev`（`scripts/dev.mjs`）同时启动：优先使用 `http://127.0.0.1:5173/`（examples）与 `http://127.0.0.1:5174/`（docs）；若端口被占用则自动向后寻找空闲端口，并通过 `EARTHSCENE_EXAMPLES_ORIGIN` / `VITE_EARTHSCENE_DOCS_ORIGIN` 同步两侧交叉链接。发布示例时，`pnpm build:examples` 会先构建 VitePress 文档，再构建 `examples` Vite 多页应用。
+
+## 整体构建关系
+
+`examples/vite.config.ts` 以 `examples/` 作为 Vite root，并通过 `rollupOptions.input` 显式注册多个 HTML 入口，包括首页、各独立示例页、Sandcastle 主页面和 Sandcastle runner。
+
+关键入口包括：
+
+- `index.html`：项目主页。
+- `gallery.html`：社区案例 gallery 页（独立展示社区作品，带搜索与标签筛选）。
+- `basic.html`、`terrain.html`、`3d-tiles.html` 等：独立示例页。
+- `sandcastle.html`：Sandcastle 编辑器页面。
+- `sandcastle/runner.html`：Sandcastle iframe 运行页面。
+
+示例代码默认从 `../src` 引入 EarthScene，而不是从 `dist` 引入。这样开发示例可以直接验证源码行为，适合作为库功能开发时的反馈面。
+
+`examples/public/` 是示例站点的静态资源根目录，只放**必须保持固定 URL** 的文件：
+
+- `examples/public/favicon.svg` / `favicon.ico` / `apple-touch-icon.png`：站点标签图标，必须在 origin 根路径。没有实体 `/favicon.ico` 时，Cloudflare Pages 会把该请求回退成首页 HTML，浏览器就会显示错误/缓存图标。几何 E 对齐首页 `.portal-brand__mark`；栅格由 `scripts/generate-favicon.mjs` 生成。examples 各 HTML 由 Vite `earthscene-favicon` 插件注入 `<link rel="icon">`，文档站在 `docs/.vitepress/config.ts` 的 `head` 里指向同一套文件。
+- `examples/public/draco/` 存放 Draco 解码器资源。根目录是 three.js 完整 decoder（mesh + 点云）；`gltf/` 子目录是体积更小的 glTF 专用 decoder，不能解点云。
+- `examples/public/docs/` 是 VitePress 文档的构建输出目录。
+- `examples/public/blue-marble/` 存放首页的 NASA Blue Marble z0–z1 瓦片，共 10 张 256×256 JPEG。XYZ 模板需要固定的 `{z}/{x}/{y}.jpg` 路径，因此放在静态资源目录；开发和生产都由本站提供，使用 `/blue-marble/` 前缀避开 `/maptiles` 远端代理。原图缓存与生成脚本用法见 `examples/README.md`。
+
+示例私有贴图、图标不要放 `public/`。它们通过 `new URL(..., import.meta.url)` 或 CSS 相对 `url()` 进入 Vite 依赖图，例如 `examples/water-area/assets/`、`examples/threejs-interop/assets/`、`examples/assets/icons/`、`examples/back.svg`。Sandcastle runner 会剥离示例源码里的 ESM import，这类 URL 必须放在 runner 注入的模块里解析（如 `sandcastleBindings`、`symbol-icons.ts`）；CSS 则用 `?inline` 让 `url()` 在 iframe 内仍指向构建后的地址。
+
+EarthScene 自身的云、STBN、星空等运行资源默认从源码内置资源模块进入 Vite 依赖图，不再通过
+`examples/public/earthscene/` 和 `earthscene.baseUrl = '/earthscene/'` 作为示例默认路径。
+
+## 项目主页
+
+项目主页由 `examples/index.html` 和 `examples/index.ts` 组成，主要目标是给访问者一个产品级第一印象，而不是只展示示例列表。
+
+`examples/index.html` 负责页面结构和文案：
+
+- 顶部导航包含 EarthScene 品牌、文档、示例（Sandcastle）、社区作品入口、语言下拉（`mountLanguageToggle` 的 `dropdown` 形态，位于 GitHub 图标左侧）和 GitHub 图标链接；`#capabilities` / `#workflow` 区块仍保留在页面上，供 gallery 页跨页深链（`./index.html#capabilities`）使用。首页与 gallery 共用这套导航；Sandcastle / 示例页仍用默认 `split` 形态的 中文 | EN 双按钮。
+- Hero 区域展示 EarthScene 的一句话定位：面向 Web 的开源三维地球引擎。
+- 页面中部介绍地球与相机、多源影像图层、3D Tiles、Cesium 地形、大气云和工程默认值。
+- 后续展示真实地形、大气和体积云效果素材。
+- `#showcase` 社区案例精选条：位于主内容末尾，只展示最新 3 条 + 「查看全部」入口（指向 `gallery.html`），空数据时整块隐藏。数据来自 `examples/showcase-data.ts`，由 `examples/showcase.ts` 的 `mountFeaturedStrip()` 渲染；完整列表与搜索 / 标签筛选在 gallery 页（`mountGallery()`）。
+- `portal-footer`：显示 EarthScene contributors 与 MIT；无在线仓库、发布或 npm 入口。第三方技术链接继续保留用于说明依赖。
+
+`examples/gallery.html` 是社区案例 gallery 页：复用 portal 壳（与首页同构的品牌导航 / 语言下拉 / GitHub 图标 / 页脚致谢），页面主体为搜索框 + 标签筛选条 + 全量卡片网格，由 `examples/gallery.ts` 挂载。内容少时靠 `.portal.portal-gallery` 的纵向 flex + `.portal-gallery__content { flex: 1 }` 把页脚顶到视口底部。决策背景见 [notes/decisions/0001-community-showcase-gallery-page.md](../decisions/0001-community-showcase-gallery-page.md)。链接健康检查用 `scripts/check-showcase-links.mjs`（`pnpm check:showcase`）。
+
+`examples/index.ts` 负责主页交互和 Hero 三维地球：
+
+- 绑定顶部导航滚动状态。
+- 调用 `mountFeaturedStrip()` 挂载首页社区案例精选条（空数据隐藏，语言切换重渲染）。
+- 在 `#portal-globe-viewer` 中创建 `earthscene.Viewer`。
+- 首页 Hero 地球不走示例站 GIS profile：底图是随站点发布的 NASA Blue Marble XYZ（`EPSG:4326`，`/blue-marble/{z}/{x}/{y}.jpg`，z0–z1），不加载地形（椭球即可）。10 张瓦片放在 `examples/public/blue-marble/`，开发和生产都从本站静态目录加载，避免远端 502、响应中断或超时影响首页。生成命令为 `python scripts/generate-blue-marble-tiles.py --max-zoom 1 --out examples/public/blue-marble`。`index.ts` 对 `../src` 用动态 `import()`，门户壳先完成 DCL，再加载 Viewer。地球角上署名 NASA Earth Observatory。其它独立示例仍用 `examples/map-sources.config.ts` 的 `exampleMapServiceConfig`。本地读 `localMapSourceProfile`（默认 `local`：ArcGIS 卫星影像 + Cesium Ion 地形），生产读 `productionMapSourceProfile`（默认 `cesiumIon`：Cesium Ion Bing 航空影像 + Cesium World Terrain）。意图见 [示例站图源 profile](../../docs/intent/examples-map-source-profiles.md)。走天地图时，`pnpm dev` 经 Vite 代理 `/tianditu-t/{n}` 转发到 `t{n}.tianditu.gov.cn`，并把 Referer 改写成 `EARTHSCENE_TIANDITU_DEV_REFERER`（默认 `http://127.0.0.1:5173/`）。天地图密钥仍只放 `.env`。Cesium Ion token 由独立示例页和 Sandcastle 父页右上角齿轮写入 `localStorage`（`earthscene:cesium-ion-token`），优先读取浏览器覆盖值，再回退到 `.env.local` 的 `VITE_CESIUM_ION_TOKEN`；首页、gallery 和 runner iframe 不挂该设置。空 token 时不创建 Ion 影像 / 地形，面板自动打开；保存后刷新页面。
+- 开启云、大气、镜头光晕、SMAA 和曝光设置，让首页直接展示 EarthScene 的渲染能力。
+
+主页中的 viewer 会挂到 `window.viewer` 和 `window.portalViewer`，便于开发调试。页面卸载时调用 `viewer.destroy()` 释放资源。
+
+## 项目文档页
+
+项目文档页不在 `examples/` 下编写源码，而是由根目录 `docs/` 管理，使用 VitePress 构建。
+
+核心配置在 `docs/.vitepress/config.ts`：
+
+- `base: '/docs/'`
+- `outDir: '../examples/public/docs'`
+- 品牌色与示例站共用 `theme/earthscene-accent.css` 的 `--earthscene-accent*`；主色实心 `#40CC9E`。VitePress `--vp-c-brand-*` 的映射在 `docs/.vitepress/theme/custom.css`。改色只动 token 文件。
+- 导航包含指南、API、能力参考和 Sandcastle。
+- `command === 'serve'` 时，Sandcastle 链接指向开发服务器 `${EARTHSCENE_EXAMPLES_ORIGIN || 'http://127.0.0.1:5173'}/sandcastle.html`。
+- 构建后，Sandcastle 链接使用相对路径 `../../sandcastle.html`，从静态文档页跳回示例站点中的 Sandcastle。
+
+`docs/` 应只保留面向用户的文档内容，例如：
+
+- `docs/index.md`
+- `docs/guide/`
+- `docs/api/`
+- `docs/capabilities/`
+
+项目级备忘、调研记录、架构草稿和源码阅读笔记应放在 `notes/`，避免被 VitePress 当作用户文档页面收录或搜索。
+
+## 项目 Sandcastle
+
+Sandcastle 是一个可编辑、可运行示例的交互页面，设计上分成主应用和运行器两层：
+
+- 主应用：`examples/sandcastle.html` 加载 `examples/sandcastle/app.ts`
+- 运行器：`examples/sandcastle/runner.html` 加载 `examples/sandcastle/runner.ts`
+
+主应用负责示例目录、代码编辑、运行控制和日志展示；运行器在 iframe 中执行用户当前代码，隔离页面重写和示例运行副作用。
+
+### 示例注册
+
+`examples/sandcastle/registry.ts` 通过 `import.meta.glob` 扫描 `examples/*.html` 和 `examples/*.ts` 的源码文本，并生成 Sandcastle 示例列表。
+
+注册流程大致是：
+
+1. 扫描 HTML 示例文件。
+2. 排除 `index.html`、`sandcastle.html` 和 `gallery.html`（社区作品 gallery 页，不是可编辑示例）。
+3. 从 HTML 中找到对应的 `<script type="module" src="...">`。
+4. 读取同名 TypeScript 示例源码。
+5. 移除原始 module script，生成可编辑的 HTML 内容。
+6. 从标题、页面内容和脚本中推断分类、描述和标签。
+
+`blank` 示例作为默认隐藏示例使用，不出现在普通示例列表中，但可作为 Sandcastle 初始空白场景。`hism-compare` 是性能基准页：保留 Vite 独立入口与文档链接，通过 `excludedHtmlFiles` 排除出 Sandcastle 列表。
+
+新增普通示例时，通常只需要新增一组 `examples/<id>.html` 和 `examples/<id>.ts`，并在必要时更新：
+
+- `examples/vite.config.ts` 的 `htmlInputs`
+- `examples/sandcastle/registry.ts` 的分类、标题、描述或标签规则
+
+### 编辑器主应用
+
+`examples/sandcastle/app.ts` 是 Sandcastle 的主界面控制器，主要职责包括：
+
+- 初始化 Monaco Editor。
+- 管理 JavaScript 和 HTML 两个编辑 pane。
+- 展示示例列表、分类、标签和搜索结果。
+- 根据 URL query 中的 `example` 恢复指定示例。
+- 将当前 HTML 和 JavaScript 打包成运行 payload。
+- 创建或刷新 preview iframe。
+- 接收 runner 通过 `postMessage` 发回的 console 日志和错误。
+
+运行 payload 会优先存入 `localStorage`，再通过 `run` query 参数把 key 传给 runner。payload 过大或存储失败时，代码会退回到 URL payload 方式。主应用还会定期清理旧的 stored runs，避免 localStorage 无限膨胀。
+
+### iframe 运行器
+
+`examples/sandcastle/runner.ts` 只负责执行一次当前 payload：
+
+- 从 URL query 或 localStorage 读取 `SandcastleRunPayload`。
+- 把示例 HTML 写入当前 document。
+- 把 `styles.css` 换成 `?inline` 处理后的内联样式，保证 iframe 内样式完整，且 CSS `url()` 指向构建后的资源。
+- 注入 `<base href="../">`，让相对资源路径按示例目录解析。
+- 移除 HTML 中原本的 module script。
+- 去掉示例脚本中的 ESM import/export 声明。
+- 用 `new Function(...)` 注入 EarthScene、Three.js、GLTFLoader 和共享示例工具后执行示例代码。
+- 劫持 console，将日志通过 `postMessage` 发回主应用。
+
+runner 注入的共享工具包括 `mountLocationReadout`、`setupExamplePanels`、`SYMBOL_ICON_URLS`、`exampleMapServiceConfig`、`defaultCesiumIonToken`、`t` / `bootExampleI18n`、HISM demo helpers 等。新增被示例 `import` 的本地模块时，必须同步在 `runner.ts` 的 `new Function` 参数列表中注入，否则 Sandcastle 剥离 import 后会报 `ReferenceError`。Cesium Ion 设置齿轮只挂在 Sandcastle 父页；runner 调用 `bootExampleI18n({ toggle: false })`，不在 iframe 里再挂一份。
+
+### 中英文切换（i18n）
+
+示例站（主页 / Sandcastle / 独立示例）使用自研轻量 i18n，模块在 `examples/i18n/`：
+
+- 语言：`zh` | `en`
+- 解析优先级：`?lang=` → `localStorage['earthscene.locale']` → `navigator.language` → 回落 `en`
+- **壳 / HTML**：catalog key + `data-i18n*`（主页、Sandcastle UI、示例面板静态文案）
+- **示例 TS**：优先内联双语 `t({ zh: "…", en: "…" })`，避免抽象 key 损害教程可读性；`t(key)` 仍可用于壳层
+- 词典源：`examples/i18n/_messages.json`，用 `examples/i18n/_gen-messages.mjs` 生成 `messages/zh.ts` 与 `messages/en.ts`（服务 HTML / 壳 / registry）
+- Sandcastle 切语言只刷新壳 UI 与 gallery；Monaco 源码不改写；重新 Run 后 runner 对 iframe DOM 再 `applyTranslations`
+- VitePress 文档站本期不做双语；日后可复用同一 `earthscene.locale` key
+
+Tree、Gaussian Splat 与 HISM demo helpers 属于专用能力，不在 runner 基础依赖图中静态加载。[runtime-bindings.ts](../../examples/sandcastle/runtime-bindings.ts) 根据当前编译后源码实际使用的 binding 判定所需能力，runner 再通过动态 import 加载：
+
+- `GAUSSIAN_SPLAT_RUNTIME_BINDING_NAMES` → `examples/gaussian-splat/sandcastleBindings.ts`，集中注入 `GaussianSplatPlugin`、`SparkRenderer`、`SplatMesh`、`CesiumIonAuthPlugin` 和 `ImplicitTilingPlugin`。高斯案例默认 ion Redmond，并支持两个固定提交的 3D Tiles 样例和 Spark 单文件；专用依赖保持异步加载。
+- `Tree` → `@dgreenheck/ez-tree`
+- HISM helper binding → `examples/hism/shared.ts`
+- Water Area helper、默认参数和归一化函数 → `examples/water-area/sandcastleBindings.ts`
+- `Grass` / `OrbitControls` / meadow RTC helpers → `examples/atmosphere-local-meadow/sandcastleBindings.ts`。无球大气案例的 Viewer、`setWorldToECEFMatrix` 与自定义循环写在入口 `examples/atmosphere-local-meadow.ts`；Sandcastle 注入第三方草地、轨道控件和该案例导入的 RTC helper，不要再把教程逻辑收进 factory。
+
+普通示例只加载 EarthScene / Three.js 和通用 helper；专用依赖加载失败会进入 runner 现有的错误回传通道。新增专用注入能力时，应把同一领域的运行时值成组维护在 `*_RUNTIME_BINDING_NAMES` 与专用 re-export 模块中，并同步更新 binding 检测测试。只注入入口函数、遗漏示例导入的默认参数或 helper，会在 import 被剥离后产生 `ReferenceError`。
+
+### 示例控件面板
+
+有控件的示例页分两类：
+
+- **Leva 面板**（`createEarthScenePanel` + `leva-vanilla`）：schema 驱动案例（water-area、fly-to、atmosphere、atmosphere-local-meadow、ground-clamp、3d-tiles、entities、symbol、horses 系列、terrain、data-sources、threejs-interop、hism-forest、hism-compare 等）；EarthScene accent 见 `styles.css` 的 `#leva__root` 变量覆盖。
+- **遗留 HTML 声明式 `.example-panel`**（`examples/example-panel.ts`）：仅保留折叠 helper，供尚未改完的页面或 Sandcastle runner 注入；独立示例页已迁到 Leva。
+
+通用约定：
+
+- 示例脚本入口对 HTML 面板调用 `setupExamplePanels()` 绑定折叠动画。
+- 主题色走 `theme/earthscene-accent.css` 的 `--earthscene-accent*`；`examples/styles.css` 与文档站都 `@import` 这份文件。Sandcastle Run 按钮等同源。Timeline 控件仍在 `src/widgets/Timeline/styles.ts` 内联一份等价 hex（运行时注入 stylesheet，未接入该 CSS 文件）。
+- 不要再使用旧的 `.toolbar` / `.layer-manager` 外壳（图层列表内部仍可复用 `layer-manager__*` 条目样式）。
+
+**leva-vanilla 示例面板（`examples/example-panel-leva.ts`）**：
+
+- 使用 `leva-vanilla` 原生 GUI（`mountDOM`）+ schema / `effect()` 状态引擎。
+- EarthScene accent 主题在 `examples/styles.css` 通过 `--leva-colors-accent*` 覆盖，对齐 `theme/earthscene-accent.css` 的 `--earthscene-accent*`。
+- `createEarthScenePanel(schemaFactory, options)` 为薄封装；`title` 可传函数；locale 变化时按 factory 重建面板并恢复控件值。
+- 需要页面级错误/成功提示（类似 Element UI Message）时使用 `examples/example-message.ts` 的 `ExampleMessage.error()` 等；Sandcastle runner 已注入 `showExampleMessage` / `ExampleMessage`。
+- `onRebuild` 在初次挂载与每次 locale 重建后调用，用于注册 `effect()` / DOM 监听；`statusPath` 配合 `setStatus()` 写入 `hint` 字段。
+- 已迁移案例：`water-area`、`fly-to`、`atmosphere`、`atmosphere-local-meadow`、`ground-clamp`、`ground-clamp-polygon`、`google-photorealistic-3d-tiles`、`3d-tiles`、`point-cloud-3d-tiles`、`gaussian-splat-3d-tiles`、`3d-tiles-picking`、`entities`、`symbol`（`setupSymbolPanel.ts`）、`instanced-horses`、`mixed-height-sampling-horses`、`terrain`、`data-sources`、`threejs-interop`、`hism-forest`、`hism-compare`。
+- `threejs-interop` 用 `Viewer.create` + `renderer.type: 'webgpu'`，并打开 `postProcess.taa`。WebGPU 下 `highlight.outline` 无效，示例显式关闭。对齐 Cesium for Unreal 动态光照：Littlest Tokyo 使用 `lighting: 'local'` + `materialMode: 'preserve'`，挂载上游 `emissive.jpg` 与模型内点光/面光（`examples/littlest-tokyo-night.ts`）。灯挂在带 `scale` 的 glTF 根上；作者坐标先减去上游 `gltf.scene` 的 bbox offset（居中 xz，并含 `-min.y - 12`），再写入 scene 局部，避免灯停在未平移的墙体里。点光 intensity 按 `(scale / 0.01)² × 0.1` 对齐上游 `scale={0.01}` / `0.1` 的暖色 spill。`cosSun < 0.1` 时二值开灯，再乘面板「光源亮度」（默认 1，同时缩放点光 / 面光 / 广告牌自发光）。打开 `photometric`（正午锚只缩放太阳）与 `autoExposure`。不开 Bloom / 镜头光晕。不关 `sunLight`、不靠 luma / 月光补偿自发光。夜景走 `light-source`，不依赖 WebGL lighting mask。
+- 无独立控件面板的示例：`basic`、`webgpu-basic`（以及主页 / gallery / Sandcastle 壳）。
+- Sandcastle runner 基线注入含 `createEarthScenePanel`（`example-panel-leva.ts`）。
+- 依赖：示例依赖的固定源码位于 `vendor/leva-vanilla` 和 `vendor/three-stylized`，通过 `file:vendor/...` 安装，Vite alias 解析到项目内源码。来源与固定提交见各自 `UPSTREAM.json`；无需外部同级仓库，参见 `CONTRIBUTING.md`「固定源码依赖」。
+
+**遗留 HTML 声明式 `.example-panel`**：`setupExamplePanels()` 仍注入 Sandcastle runner，供旧 HTML 结构兼容；独立示例页已不再依赖该样式。
+
+runner 的 iframe 使用 `sandbox="allow-scripts allow-same-origin"`。它隔离了示例对 document 的重写，同时允许脚本运行和同源 localStorage 读取。
+
+## 维护约定
+
+新增示例页面时，优先保证独立 HTML 页面本身可以直接运行；Sandcastle 只是复用这些独立页面和脚本源码。
+
+普通示例不要默认设置 `earthscene.baseUrl`。EarthScene 自身静态资源应优先使用包内置资源；只有专门验证 CDN、内网静态目录或非打包环境的资源覆盖路径时，才把资源放到 `examples/public/earthscene/` 并临时设置 `earthscene.baseUrl = '/earthscene/'`。
+
+示例源码是面向用户的 API 教程，不要为了减少重复把关键 Viewer 配置隐藏到默认 helper 里。比如默认 Cesium Ion 地形配置应在每个示例的 `new earthscene.Viewer(...)` 附近显式写出 `terrain: { type: 'cesium-ion', assetId, apiToken, ... }` 的形状，让用户打开单个示例文件时能直接看懂配置结构。公共 `examples/shared.ts` 只适合放通用资源 URL、简单展示文案等不会遮蔽核心 API 的内容。
+
+面向用户的教程、API 和能力说明放在 `docs/`；维护者备忘、调研资料和项目架构说明放在 `notes/`。
+
+文档站点构建输出会进入 `examples/public/docs/`，不要手动编辑该目录下的生成内容。
+
+仅调整 notes 文档时通常不需要运行 `pnpm type-check` 或 `pnpm build`。

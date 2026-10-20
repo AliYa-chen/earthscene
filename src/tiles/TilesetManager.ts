@@ -1,0 +1,673 @@
+import * as THREE from 'three'
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
+import { TilesRenderer } from '3d-tiles-renderer'
+import { CesiumIonAuthPlugin } from '3d-tiles-renderer/core/plugins'
+import {
+  GLTFExtensionsPlugin,
+  TilesFadePlugin,
+  UpdateOnChangePlugin,
+} from '3d-tiles-renderer/plugins'
+import { TileCreasedNormalsPlugin } from '../TileCreasedNormalsPlugin'
+import type { ImageryLayer } from '../LayerManager'
+import type { SurfaceMaterialOptions } from '../materials/materialMode'
+import { TilesetSamplingAdapter } from './TilesetSamplingAdapter'
+import { HeightSamplingTilesetPool } from './HeightSamplingTilesetPool'
+import {
+  ImageryOverlayFactory,
+  type ImageryOverlayContext
+} from './ImageryOverlayFactory'
+import {
+  createOverlayDayNightParams,
+  syncOverlayDayNightOpacities,
+  type OverlayDayNightParams
+} from './overlayDayNight'
+import { SurfaceTilesetFactory } from './SurfaceTilesetFactory'
+import { TerrainTilesetFactory } from './TerrainTilesetFactory'
+import {
+  SceneTilesetMaterialPlugin,
+  SurfaceMaterialPlugin,
+  TileUnlitMaterialPlugin,
+  createMaterialsUnlitCompatibilityPlugin,
+  type ResolvedSurfaceMaterialMode,
+  type SceneTilesetMaterialMode,
+  type TileModelProcessingOptions
+} from './TilesetModelPlugins'
+import {
+  PointCloudShadingController,
+  aggregatePointCloudEdl,
+  attachPointCloudShadingController,
+  type PointCloudEdlAggregate
+} from './PointCloudShadingController'
+import { PointCloudColorTransform } from './PointCloudColorTransform'
+import type {
+  Load3DTilesetOptions,
+  HeightSamplingSource,
+  TerrainOptions,
+  TilesetLayer,
+} from '../types'
+import type { EarthSceneRenderer } from '../rendering/RendererAdapter'
+
+export type HeightSamplingTilesetEntry = {
+  source: TilesRenderer
+  tileset: TilesRenderer
+  poolKey?: string
+  poolRevision?: number
+  useSamplingCamera?: boolean
+  regionMask?: boolean
+}
+
+export interface TilesetManagerOptions {
+  scene: THREE.Scene
+  camera: THREE.PerspectiveCamera
+  renderer: EarthSceneRenderer
+  useWebGPUCompatibleSurfaceOverlay?: boolean
+  dracoLoader: DRACOLoader
+  transparentOverlayTexture: THREE.Texture
+  terrain?: TerrainOptions
+  surfaceMaterialMode: ResolvedSurfaceMaterialMode
+  surfaceMaterialOptions: SurfaceMaterialOptions
+  sceneTilesetMaterialMode: SceneTilesetMaterialMode
+  onPointCloudEdlChange?: () => void
+}
+
+export class TilesetManager {
+  private activeSurfaceTileset: TilesRenderer
+  private activeTerrainTileset: TilesRenderer | null = null
+  private readonly sceneTilesets = new Map<string, TilesRenderer>()
+  private readonly sceneTilesetOptions = new Map<string, Load3DTilesetOptions>()
+  private readonly sceneTilesetMaterialPlugins = new WeakMap<TilesRenderer, SceneTilesetMaterialPlugin>()
+  private readonly pointCloudShadingControllers = new Map<string, PointCloudShadingController>()
+  private readonly pointCloudColorTransform: PointCloudColorTransform | null
+  private readonly surfaceMaterialPlugins = new WeakMap<TilesRenderer, SurfaceMaterialPlugin>()
+  private readonly heightSamplingAdapter = new TilesetSamplingAdapter()
+  private readonly heightSamplingTilesetPool: HeightSamplingTilesetPool
+  private readonly imageryOverlayFactory: ImageryOverlayFactory
+  private readonly overlayDayNightParams: OverlayDayNightParams
+  private readonly surfaceTilesetFactory: SurfaceTilesetFactory
+  private readonly terrainTilesetFactory: TerrainTilesetFactory
+  private readonly imageryOverlayContexts = new WeakMap<TilesRenderer, ImageryOverlayContext>()
+  private readonly rendererSize = new THREE.Vector2()
+  private currentImageryLayers: ImageryLayer[] = []
+  private currentTerrain: TerrainOptions | undefined
+  private globeShow = true
+  private globeOpacity = 1
+  private sceneTilesetId = 0
+
+  constructor(private readonly options: TilesetManagerOptions) {
+    this.pointCloudColorTransform = 'isWebGLRenderer' in options.renderer
+      ? new PointCloudColorTransform(() => ({
+          toneMapping: options.renderer.toneMapping,
+          exposure: options.renderer.toneMappingExposure
+        }))
+      : null
+    this.heightSamplingTilesetPool = new HeightSamplingTilesetPool({
+      isReusable: (tileset) => this.heightSamplingAdapter.isReusableForHeightSampling(tileset)
+    })
+    this.imageryOverlayFactory = new ImageryOverlayFactory({
+      renderer: options.renderer,
+      transparentOverlayTexture: options.transparentOverlayTexture
+    })
+    this.overlayDayNightParams = createOverlayDayNightParams()
+    this.surfaceTilesetFactory = new SurfaceTilesetFactory({
+      imageryOverlayFactory: this.imageryOverlayFactory,
+      getSurfaceMaterialMode: () => this.options.surfaceMaterialMode,
+      getSurfaceMaterialOptions: () => this.options.surfaceMaterialOptions,
+      getGlobeOpacity: () => this.globeOpacity,
+      useDirectOverlayTexture: options.useWebGPUCompatibleSurfaceOverlay ?? false,
+      overlayDayNightParams: this.overlayDayNightParams,
+      registerCommonTilesetPlugins: (tileset) => this.registerCommonTilesetPlugins(tileset)
+    })
+    this.terrainTilesetFactory = new TerrainTilesetFactory({
+      imageryOverlayFactory: this.imageryOverlayFactory,
+      getSurfaceMaterialMode: () => this.options.surfaceMaterialMode,
+      getSurfaceMaterialOptions: () => this.options.surfaceMaterialOptions,
+      getGlobeOpacity: () => this.globeOpacity,
+      useDirectOverlayTexture: options.useWebGPUCompatibleSurfaceOverlay ?? false,
+      overlayDayNightParams: this.overlayDayNightParams,
+      registerCommonTilesetPlugins: (tileset) => this.registerCommonTilesetPlugins(tileset)
+    })
+    this.currentTerrain = options.terrain
+
+    this.activeSurfaceTileset = this.createSurfaceTileset(this.currentImageryLayers)
+    this.options.scene.add(this.activeSurfaceTileset.group)
+    if (this.currentTerrain) {
+      this.activeTerrainTileset = this.createTerrainTileset(this.currentTerrain, this.currentImageryLayers)
+      this.options.scene.add(this.activeTerrainTileset.group)
+    }
+    this.syncGlobeVisibility()
+  }
+
+  get tileset() {
+    return this.activeTerrainTileset ?? this.activeSurfaceTileset
+  }
+
+  get surfaceTileset() {
+    return this.activeSurfaceTileset
+  }
+
+  get terrainTileset() {
+    return this.activeTerrainTileset
+  }
+
+  get terrainOptions() {
+    return this.currentTerrain
+  }
+
+  get loadedSceneTilesets() {
+    return [...this.sceneTilesets.values()]
+  }
+
+  get loadedSceneTilesetEntries() {
+    return Array.from(this.sceneTilesets, ([id, tileset]) => ({ id, tileset }))
+  }
+
+  setSurfaceMaterial(mode: ResolvedSurfaceMaterialMode, options: SurfaceMaterialOptions) {
+    this.options.surfaceMaterialMode = mode
+    this.options.surfaceMaterialOptions = { ...options }
+    this.surfaceMaterialPlugins.get(this.activeSurfaceTileset)?.setMaterial(
+      mode,
+      this.options.surfaceMaterialOptions,
+      this.activeSurfaceTileset
+    )
+    if (this.activeTerrainTileset) {
+      this.surfaceMaterialPlugins.get(this.activeTerrainTileset)?.setMaterial(
+        mode,
+        this.options.surfaceMaterialOptions,
+        this.activeTerrainTileset
+      )
+    }
+  }
+
+  setSceneTilesetMaterialMode(mode: SceneTilesetMaterialMode) {
+    this.options.sceneTilesetMaterialMode = mode
+    this.sceneTilesets.forEach((tileset) => {
+      this.sceneTilesetMaterialPlugins.get(tileset)?.setMode(mode, tileset)
+    })
+  }
+
+  setImageryLayers(layers: ImageryLayer[] = []) {
+    this.invalidateHeightSamplingTilesetPool()
+    this.currentImageryLayers = layers
+    this.replaceSurfaceTileset(this.createSurfaceTileset(this.currentImageryLayers))
+    if (this.currentTerrain) {
+      this.replaceTerrainTileset(this.createTerrainTileset(this.currentTerrain, this.currentImageryLayers))
+    }
+  }
+
+  syncImageryLayer(layer: ImageryLayer) {
+    this.syncTilesetImageryLayer(this.activeSurfaceTileset, layer)
+    if (this.activeTerrainTileset) {
+      this.syncTilesetImageryLayer(this.activeTerrainTileset, layer)
+    }
+  }
+
+  syncImageryLayerOrder(layers: ImageryLayer[] = []) {
+    this.currentImageryLayers = layers
+    this.syncTilesetImageryLayerOrder(this.activeSurfaceTileset)
+    if (this.activeTerrainTileset) {
+      this.syncTilesetImageryLayerOrder(this.activeTerrainTileset)
+    }
+  }
+
+  setTerrain(terrain: TerrainOptions | null | undefined) {
+    this.invalidateHeightSamplingTilesetPool()
+    this.currentTerrain = terrain ?? undefined
+    this.replaceTerrainTileset(
+      this.currentTerrain
+        ? this.createTerrainTileset(this.currentTerrain, this.currentImageryLayers)
+        : null
+    )
+  }
+
+  applyGlobeShow(show: boolean) {
+    this.globeShow = show
+    this.syncGlobeVisibility()
+  }
+
+  applyGlobeOpacity(opacity: number) {
+    this.globeOpacity = opacity
+    this.surfaceMaterialPlugins.get(this.activeSurfaceTileset)?.setOpacity(
+      opacity,
+      this.activeSurfaceTileset
+    )
+    if (this.activeTerrainTileset) {
+      this.surfaceMaterialPlugins.get(this.activeTerrainTileset)?.setOpacity(
+        opacity,
+        this.activeTerrainTileset
+      )
+    }
+  }
+
+  load3DTileset(options: Load3DTilesetOptions): TilesetLayer {
+    const id = options.id ?? this.createSceneTilesetId()
+    if (this.sceneTilesets.has(id)) {
+      throw new Error(`TilesetManager: 3D Tiles layer "${id}" already exists.`)
+    }
+
+    const tileset = this.createSceneTileset(options)
+    this.registerCommonTilesetPlugins(tileset, this.getSceneTilesetModelProcessingOptions(options))
+    this.registerSceneTilesetMaterialPlugins(tileset, options)
+    const pointCloudShading = this.registerPointCloudShadingController(id, tileset, options)
+    tileset.group.visible = options.show ?? true
+    this.sceneTilesets.set(id, tileset)
+    this.sceneTilesetOptions.set(id, { ...options, id })
+    this.options.scene.add(tileset.group)
+
+    return {
+      id,
+      tileset,
+      pointCloudShading,
+      get show() {
+        return tileset.group.visible
+      },
+      set show(value: boolean) {
+        tileset.group.visible = value
+      },
+      remove: () => {
+        this.remove3DTileset(id)
+      }
+    }
+  }
+
+  get3DTileset(id: string) {
+    return this.sceneTilesets.get(id) ?? null
+  }
+
+  remove3DTileset(id: string) {
+    const tileset = this.sceneTilesets.get(id)
+    if (!tileset) return false
+
+    this.options.scene.remove(tileset.group)
+    tileset.dispose()
+    this.sceneTilesets.delete(id)
+    this.sceneTilesetOptions.delete(id)
+    this.pointCloudShadingControllers.delete(id)
+    this.options.onPointCloudEdlChange?.()
+    this.invalidateHeightSamplingTilesetPool()
+    return true
+  }
+
+  getPointCloudEdlState(): PointCloudEdlAggregate {
+    return aggregatePointCloudEdl(this.pointCloudShadingControllers.values())
+  }
+
+  createHeightSamplingTilesets(source: HeightSamplingSource = 'all'): HeightSamplingTilesetEntry[] {
+    const entries: HeightSamplingTilesetEntry[] = []
+
+    if (source !== 'terrain') {
+      this.sceneTilesets.forEach((sourceTileset, id) => {
+        if (!sourceTileset.group.visible) return
+
+        const options = this.sceneTilesetOptions.get(id)
+        if (!options) return
+
+        const poolKey = `tileset:${id}`
+        const tileset = this.acquireHeightSamplingTileset(poolKey, () => {
+          const samplingTileset = this.createSceneTileset(options)
+          this.registerGltfExtensionsPlugin(samplingTileset)
+          this.registerSceneTilesetMaterialPlugins(samplingTileset, options)
+          return samplingTileset
+        })
+        this.copyTilesetTransform(sourceTileset, tileset)
+        entries.push({
+          source: sourceTileset,
+          tileset,
+          poolKey,
+          poolRevision: this.heightSamplingTilesetPool.revision,
+          useSamplingCamera: true,
+          regionMask: true
+        })
+      })
+    }
+
+    if (source !== 'tileset' && this.activeTerrainTileset && this.currentTerrain) {
+      const poolKey = 'terrain'
+      const tileset = this.acquireHeightSamplingTileset(poolKey, () => this.createHeightSamplingTerrainTileset(this.currentTerrain!))
+      this.copyTilesetTransform(this.activeTerrainTileset, tileset)
+      entries.push({
+        source: this.activeTerrainTileset,
+        tileset,
+        poolKey,
+        poolRevision: this.heightSamplingTilesetPool.revision,
+        useSamplingCamera: true,
+        regionMask: true
+      })
+    }
+
+    return entries
+  }
+
+  createSceneRegionHeightSamplingTilesets(source: HeightSamplingSource = 'all'): HeightSamplingTilesetEntry[] {
+    const entries: HeightSamplingTilesetEntry[] = []
+
+    if (source !== 'terrain') {
+      this.sceneTilesets.forEach((tileset) => {
+        if (!tileset.group.visible) return
+        entries.push({
+          source: tileset,
+          tileset,
+          useSamplingCamera: false,
+          regionMask: false
+        })
+      })
+    }
+
+    if (source !== 'tileset' && this.activeTerrainTileset) {
+      entries.push({
+        source: this.activeTerrainTileset,
+        tileset: this.activeTerrainTileset,
+        useSamplingCamera: false,
+        regionMask: false
+      })
+    }
+
+    return entries
+  }
+
+  disposeHeightSamplingTilesets(entries: HeightSamplingTilesetEntry[]) {
+    entries.forEach((entry) => {
+      this.releaseHeightSamplingTileset(entry)
+    })
+  }
+
+  update() {
+    this.pointCloudColorTransform?.update()
+    this.tileset.update()
+    this.sceneTilesets.forEach((tileset, id) => {
+      if (tileset.group.visible) {
+        tileset.update()
+        this.pointCloudShadingControllers.get(id)?.update()
+      }
+    })
+  }
+
+  updateOverlayDayNight(
+    sunDirection: THREE.Vector3,
+    worldToECEF: THREE.Matrix4
+  ) {
+    this.overlayDayNightParams.earthsceneSunDirection.value.copy(sunDirection)
+    this.overlayDayNightParams.earthsceneWorldToECEF.value.copy(worldToECEF)
+    const tileset = this.activeTerrainTileset ?? this.activeSurfaceTileset
+    const overlays = this.imageryOverlayContexts.get(tileset)?.plugin.overlays ?? []
+    syncOverlayDayNightOpacities(this.overlayDayNightParams, overlays)
+  }
+
+  resize() {
+    this.setTilesetResolution(this.activeSurfaceTileset)
+    if (this.activeTerrainTileset) {
+      this.setTilesetResolution(this.activeTerrainTileset)
+    }
+    this.sceneTilesets.forEach((tileset) => {
+      this.setTilesetResolution(tileset)
+    })
+  }
+
+  dispose() {
+    this.invalidateHeightSamplingTilesetPool()
+    this.sceneTilesets.forEach((tileset) => {
+      this.options.scene.remove(tileset.group)
+      tileset.dispose()
+    })
+    this.sceneTilesets.clear()
+    this.sceneTilesetOptions.clear()
+    this.pointCloudShadingControllers.clear()
+    this.pointCloudColorTransform?.dispose()
+    this.activeTerrainTileset?.dispose()
+    this.activeSurfaceTileset.dispose()
+  }
+
+  private registerPointCloudShadingController(
+    id: string,
+    tileset: TilesRenderer,
+    options: Load3DTilesetOptions
+  ) {
+    const controller = new PointCloudShadingController({
+      initial: options.pointCloudShading,
+      getCamera: () => this.options.camera,
+      getViewportSize: () => {
+        this.options.renderer.getSize(this.rendererSize)
+        return this.rendererSize
+      },
+      getErrorTarget: () => tileset.errorTarget,
+      colorTransform: this.pointCloudColorTransform ?? undefined,
+      onEdlChange: () => this.options.onPointCloudEdlChange?.()
+    })
+    attachPointCloudShadingController(tileset, controller)
+    this.pointCloudShadingControllers.set(id, controller)
+    this.options.onPointCloudEdlChange?.()
+    return controller.shading
+  }
+
+  private createSurfaceTileset(layers: ImageryLayer[] = []) {
+    const creation = this.surfaceTilesetFactory.create(layers, (layer) => this.getLayerOrder(layer))
+
+    this.imageryOverlayContexts.set(creation.tileset, creation.imageryContext)
+    this.surfaceMaterialPlugins.set(creation.tileset, creation.surfaceMaterialPlugin)
+    return creation.tileset
+  }
+
+  private createTerrainTileset(
+    terrain: TerrainOptions,
+    layers: ImageryLayer[] = []
+  ) {
+    const creation = this.terrainTilesetFactory.create(
+      terrain,
+      layers,
+      (layer) => this.getLayerOrder(layer)
+    )
+
+    this.imageryOverlayContexts.set(creation.tileset, creation.imageryContext)
+    this.surfaceMaterialPlugins.set(creation.tileset, creation.surfaceMaterialPlugin)
+    return creation.tileset
+  }
+
+  private registerCommonTilesetPlugins(tileset: TilesRenderer, modelProcessing: TileModelProcessingOptions = {}) {
+    this.registerGltfExtensionsPlugin(tileset)
+    this.registerTileModelProcessingPlugins(tileset, modelProcessing)
+    // LOD fade uses shader dither (fadeIn/fadeOut), not material.opacity.
+    // globe.opacity is host-material compositing and is not overwritten here.
+    tileset.registerPlugin(new TilesFadePlugin())
+    tileset.registerPlugin(new UpdateOnChangePlugin())
+    tileset.setCamera(this.options.camera)
+    this.setTilesetResolution(tileset)
+  }
+
+  private setTilesetResolution(tileset: TilesRenderer) {
+    this.options.renderer.getSize(this.rendererSize)
+    tileset.setResolution(this.options.camera, this.rendererSize.x, this.rendererSize.y)
+  }
+
+  private registerGltfExtensionsPlugin(tileset: TilesRenderer) {
+    tileset.registerPlugin(new GLTFExtensionsPlugin({
+      dracoLoader: this.options.dracoLoader,
+      plugins: [createMaterialsUnlitCompatibilityPlugin],
+      autoDispose: false
+    }))
+  }
+
+  private registerTileModelProcessingPlugins(tileset: TilesRenderer, options: TileModelProcessingOptions) {
+    if (options.creasedNormals) {
+      tileset.registerPlugin(new TileCreasedNormalsPlugin())
+    }
+  }
+
+  private getSceneTilesetModelProcessingOptions(options: Load3DTilesetOptions): TileModelProcessingOptions {
+    return {
+      creasedNormals: options.creasedNormals ?? false
+    }
+  }
+
+  private registerSceneTilesetMaterialPlugins(tileset: TilesRenderer, options: Load3DTilesetOptions) {
+    if (options.materialMode === 'unlit') {
+      tileset.registerPlugin(new TileUnlitMaterialPlugin())
+      return
+    }
+
+    const plugin = new SceneTilesetMaterialPlugin(this.options.sceneTilesetMaterialMode)
+    tileset.registerPlugin(plugin)
+    this.sceneTilesetMaterialPlugins.set(tileset, plugin)
+  }
+
+  private replaceSurfaceTileset(nextTileset: TilesRenderer) {
+    const previousTileset = this.activeSurfaceTileset
+
+    this.options.scene.remove(previousTileset.group)
+    previousTileset.dispose()
+    this.activeSurfaceTileset = nextTileset
+    this.options.scene.remove(nextTileset.group)
+    this.options.scene.add(nextTileset.group)
+    if (this.activeTerrainTileset) {
+      this.options.scene.remove(this.activeTerrainTileset.group)
+      this.options.scene.add(this.activeTerrainTileset.group)
+    }
+    this.syncGlobeVisibility()
+    this.resize()
+  }
+
+  private replaceTerrainTileset(nextTileset: TilesRenderer | null) {
+    const previousTileset = this.activeTerrainTileset
+
+    if (previousTileset) {
+      this.options.scene.remove(previousTileset.group)
+      previousTileset.dispose()
+    }
+    this.activeTerrainTileset = nextTileset
+    if (nextTileset) {
+      this.options.scene.add(nextTileset.group)
+    }
+    this.syncGlobeVisibility()
+    this.resize()
+  }
+
+  private syncGlobeVisibility() {
+    const show = this.globeShow
+    this.activeSurfaceTileset.group.visible = show && this.activeTerrainTileset === null
+    if (this.activeTerrainTileset) {
+      this.activeTerrainTileset.group.visible = show
+    }
+  }
+
+  private createHeightSamplingTerrainTileset(terrain: TerrainOptions) {
+    return this.terrainTilesetFactory.createHeightSamplingTileset(terrain, (tileset) => {
+      this.registerGltfExtensionsPlugin(tileset)
+    })
+  }
+
+  private acquireHeightSamplingTileset(poolKey: string, createTileset: () => TilesRenderer) {
+    return this.heightSamplingTilesetPool.acquire(poolKey, createTileset)
+  }
+
+  private releaseHeightSamplingTileset(entry: HeightSamplingTilesetEntry) {
+    this.heightSamplingTilesetPool.release(entry)
+  }
+
+  private invalidateHeightSamplingTilesetPool() {
+    this.heightSamplingTilesetPool.invalidate()
+  }
+
+  private copyTilesetTransform(source: TilesRenderer, target: TilesRenderer) {
+    source.group.updateMatrixWorld(true)
+    target.group.matrixAutoUpdate = source.group.matrixAutoUpdate
+    target.group.position.copy(source.group.position)
+    target.group.quaternion.copy(source.group.quaternion)
+    target.group.scale.copy(source.group.scale)
+    target.group.matrix.copy(source.group.matrix)
+    target.group.updateMatrixWorld(true)
+  }
+
+  private syncTilesetImageryLayer(tileset: TilesRenderer, layer: ImageryLayer) {
+    const context = this.imageryOverlayContexts.get(tileset)
+    if (!context) return
+
+    let overlay = context.overlays.get(layer.id)
+    if (!layer.isVisible()) {
+      if (overlay) {
+        context.plugin.deleteOverlay(overlay)
+        context.overlays.delete(layer.id)
+        this.requestTilesetRender(tileset)
+      }
+      return
+    }
+
+    if (!overlay) {
+      const nextOverlay = this.imageryOverlayFactory.createOverlay(layer.source, layer.getStyle())
+      if (!nextOverlay) return
+
+      overlay = nextOverlay
+      context.overlays.set(layer.id, overlay)
+      context.plugin.addOverlay(overlay, this.getLayerOrder(layer))
+    } else {
+      context.plugin.setOverlayOrder(overlay, this.getLayerOrder(layer))
+    }
+
+    this.imageryOverlayFactory.applyLayerStyleToOverlay(layer, overlay)
+    this.requestTilesetRender(tileset)
+  }
+
+  private syncTilesetImageryLayerOrder(tileset: TilesRenderer) {
+    const context = this.imageryOverlayContexts.get(tileset)
+    if (!context) return
+
+    this.currentImageryLayers.forEach((layer, index) => {
+      const overlay = context.overlays.get(layer.id)
+      if (overlay) {
+        context.plugin.setOverlayOrder(overlay, index)
+      }
+    })
+    this.requestTilesetRender(tileset)
+  }
+
+  private getLayerOrder(layer: ImageryLayer) {
+    const index = this.currentImageryLayers.findIndex((item) => item.id === layer.id)
+    return index === -1 ? this.currentImageryLayers.length : index
+  }
+
+  private requestTilesetRender(tileset: TilesRenderer) {
+    tileset.dispatchEvent({ type: 'needs-render' })
+  }
+
+  private createSceneTileset(options: Load3DTilesetOptions) {
+    let tileset: TilesRenderer
+    switch (options.source.type) {
+      case 'url':
+        tileset = new TilesRenderer(options.source.url)
+        break
+      case 'cesium-ion': {
+        tileset = new TilesRenderer()
+        tileset.registerPlugin(
+          new CesiumIonAuthPlugin({
+            apiToken: options.source.apiToken,
+            assetId: String(options.source.assetId),
+            autoRefreshToken: options.source.autoRefreshToken ?? true,
+            assetTypeHandler: (type) => {
+              throw new Error(`TilesetManager: Cesium Ion asset type "${type}" is not supported by load3DTileset.`)
+            }
+          })
+        )
+        break
+      }
+    }
+
+    this.applySceneTilesetLoadingOptions(tileset, options)
+    return tileset
+  }
+
+  private applySceneTilesetLoadingOptions(tileset: TilesRenderer, options: Load3DTilesetOptions) {
+    const tileLoading = options.tileLoading
+    if (tileLoading?.errorTarget !== undefined) {
+      tileset.errorTarget = tileLoading.errorTarget
+    }
+    if (tileLoading?.loadSiblings !== undefined) {
+      tileset.loadSiblings = tileLoading.loadSiblings
+    }
+  }
+
+  private createSceneTilesetId() {
+    do {
+      this.sceneTilesetId += 1
+    } while (this.sceneTilesets.has(`tileset-${this.sceneTilesetId}`))
+
+    return `tileset-${this.sceneTilesetId}`
+  }
+
+}

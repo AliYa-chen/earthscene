@@ -1,0 +1,121 @@
+{
+  "name": "earthscene",
+  "version": "0.1.0",
+  "description": "An independent Cesium-based 3D Earth project with optional Three.js effects and a staged migration from its archived renderer.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://earth.2t.hk",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AliYa-chen/earthscene.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AliYa-chen/earthscene/issues"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "README.en.md",
+    "LICENSE",
+    "third_party/licenses"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./assets": {
+      "types": "./dist/assets.d.ts",
+      "import": "./dist/assets.js"
+    },
+    "./cesium": {
+      "types": "./dist/cesium/index.d.ts",
+      "import": "./dist/cesium.js"
+    }
+  },
+  "scripts": {
+    "build": "vite build && node actions/copy-assets.js && tsc -p tsconfig.types.json && pnpm vitest run src/test/distApiSurface.test.ts && node scripts/check-cesium-dist.mjs",
+    "build:examples": "node scripts/copy-cesium-assets.mjs && vitepress build docs && vite build --config examples/vite.config.ts",
+    "docs:build": "vitepress build docs",
+    "docs:dev": "vitepress dev docs --host 0.0.0.0 --port 5174",
+    "docs:preview": "vitepress preview docs --host 127.0.0.1 --port 4174 --strictPort",
+    "preview": "vite preview --config examples/vite.config.ts --host 127.0.0.1 --port 4173 --strictPort",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "benchmark:hism": "node scripts/hism-benchmark.mjs",
+    "benchmark:hism:pick": "node scripts/hism-pick-benchmark.mjs",
+    "check:showcase": "node scripts/check-showcase-links.mjs",
+    "type-check": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "dev": "node scripts/copy-cesium-assets.mjs && node scripts/dev.mjs",
+    "generate:msdf": "node scripts/generate-msdf-atlas.js",
+    "changelog": "node actions/generate-changelog.js --dry-run",
+    "release:check": "pnpm type-check && pnpm build && pnpm pack --dry-run",
+    "prepare": "husky",
+    "prepare:cesium": "node scripts/copy-cesium-assets.mjs",
+    "test:legacy": "vitest run src/test examples"
+  },
+  "peerDependencies": {
+    "3d-tiles-renderer": "^0.4.27",
+    "@mapbox/vector-tile": "^2.0.3",
+    "@takram/three-atmosphere": "0.19.1",
+    "@takram/three-clouds": "0.7.6",
+    "@takram/three-geospatial": "0.9.1",
+    "@takram/three-geospatial-effects": "0.6.4",
+    "pbf": "^4.0.1",
+    "postprocessing": "6.39.1",
+    "three": "^0.184.0",
+    "cesium": "1.146.0"
+  },
+  "peerDependenciesMeta": {
+    "@mapbox/vector-tile": {
+      "optional": true
+    },
+    "pbf": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "3d-tiles-renderer": "^0.4.27",
+    "3d-tiles-rendererjs-3dgs-plugin": "^0.1.13",
+    "@commitlint/cli": "^21.2.0",
+    "@commitlint/config-conventional": "^21.2.0",
+    "@dgreenheck/ez-tree": "^1.1.0",
+    "@mapbox/point-geometry": "^1.1.0",
+    "@mapbox/vector-tile": "^2.0.5",
+    "@sparkjsdev/spark": "^2.1.0",
+    "@takram/three-atmosphere": "0.19.1",
+    "@takram/three-clouds": "0.7.6",
+    "@takram/three-geospatial": "0.9.1",
+    "@takram/three-geospatial-effects": "0.6.4",
+    "@types/node": "^18.18.12",
+    "@types/three": "^0.184.1",
+    "concurrently": "^9.2.1",
+    "husky": "^9.1.7",
+    "leva-vanilla": "file:vendor/leva-vanilla",
+    "monaco-editor": "^0.52.2",
+    "msdf-bmfont-xml": "^2.8.0",
+    "pbf": "^4.0.2",
+    "playwright": "^1.49.0",
+    "postprocessing": "6.39.1",
+    "protomaps-leaflet": "^5.1.0",
+    "rimraf": "^6.0.1",
+    "three": "^0.184.0",
+    "three-stylized": "file:vendor/three-stylized",
+    "typescript": "~5.2.2",
+    "vite": "^5.4.19",
+    "vitepress": "^1.6.4",
+    "vitest": "^2.1.9",
+    "workerpool": "^10.0.3",
+    "cesium": "1.146.0"
+  },
+  "dependencies": {
+    "@mapbox/tiny-sdf": "^2.2.0",
+    "three-mesh-bvh": "0.9.0"
+  },
+  "private": true
+}

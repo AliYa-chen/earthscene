@@ -1,0 +1,28 @@
+{
+  "name": "three-stylized",
+  "version": "0.0.0-earthscene.1",
+  "private": true,
+  "description": "Vendored procedural meadow source for EarthScene examples.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Steve245270533",
+  "main": "./src/grass/index.ts",
+  "module": "./src/grass/index.ts",
+  "types": "./src/grass/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/grass/index.ts",
+      "import": "./src/grass/index.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "LICENSE",
+    "UPSTREAM.json"
+  ],
+  "peerDependencies": {
+    "three": ">=0.184.0 <0.186.0"
+  },
+  "sideEffects": false
+}

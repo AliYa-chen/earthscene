@@ -1,0 +1,50 @@
+import * as THREE from 'three'
+import type { EarthSceneRendererAdapter } from './RendererAdapter'
+import type { TilesetManager } from '../tiles/TilesetManager'
+
+export interface ViewportResizeManagerOptions {
+  container: HTMLElement
+  camera: THREE.PerspectiveCamera
+  renderer: EarthSceneRendererAdapter
+  tilesets: TilesetManager
+  onResize?: (width: number, height: number) => void
+}
+
+export class ViewportResizeManager {
+  private readonly rendererSize = new THREE.Vector2()
+  private readonly resizeObserver: ResizeObserver
+
+  constructor(private readonly options: ViewportResizeManagerOptions) {
+    this.resizeObserver = new ResizeObserver(() => {
+      this.resize()
+    })
+    this.resizeObserver.observe(this.options.container)
+    window.addEventListener('resize', this.handleWindowResize)
+  }
+
+  resize() {
+    const { clientWidth, clientHeight } = this.options.container
+    if (!clientWidth || !clientHeight) return
+
+    this.options.renderer.getSize(this.rendererSize)
+    if (this.rendererSize.width === clientWidth && this.rendererSize.height === clientHeight) {
+      this.options.onResize?.(clientWidth, clientHeight)
+      return
+    }
+
+    this.options.camera.aspect = clientWidth / clientHeight
+    this.options.camera.updateProjectionMatrix()
+    this.options.renderer.setSize(clientWidth, clientHeight)
+    this.options.tilesets.resize()
+    this.options.onResize?.(clientWidth, clientHeight)
+  }
+
+  dispose() {
+    window.removeEventListener('resize', this.handleWindowResize)
+    this.resizeObserver.disconnect()
+  }
+
+  private readonly handleWindowResize = () => {
+    this.resize()
+  }
+}

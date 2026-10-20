@@ -1,0 +1,26 @@
+@import '../../../theme/earthscene-accent.css';
+
+/**
+ * 把 VitePress 品牌色映射到 EarthScene accent token。
+ * 链接与主按钮都走实心 #40CC9E。
+ */
+:root {
+  --vp-c-brand-1: var(--earthscene-accent-on-light);
+  --vp-c-brand-2: color-mix(in srgb, var(--earthscene-accent) 72%, var(--earthscene-accent-ink));
+  --vp-c-brand-3: var(--earthscene-accent);
+  --vp-c-brand-soft: var(--earthscene-accent-glow);
+
+  --vp-button-brand-bg: var(--earthscene-accent);
+  --vp-button-brand-hover-bg: var(--earthscene-accent-hover);
+  --vp-button-brand-active-bg: var(--earthscene-accent);
+  --vp-button-brand-text: var(--earthscene-accent-ink);
+  --vp-button-brand-hover-text: var(--earthscene-accent-ink);
+  --vp-button-brand-active-text: var(--earthscene-accent-ink);
+}
+
+.dark {
+  --vp-c-brand-1: var(--earthscene-accent-bright);
+  --vp-c-brand-2: color-mix(in srgb, var(--earthscene-accent-bright) 78%, white);
+  --vp-c-brand-3: var(--earthscene-accent);
+  --vp-c-brand-soft: var(--earthscene-accent-glow);
+}

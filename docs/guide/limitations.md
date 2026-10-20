@@ -1,0 +1,83 @@
+> 实现范围：本文描述当前默认 Three.js 入口；其中的 API 和能力不表示已由 Cesium 实现。独立 Cesium 子模块与迁移范围见[项目状态](/guide/project-status)。
+
+# 能力边界与已知限制
+
+本章集中说明 EarthScene 当前版本的能力边界和已知限制，便于在选型和排查时快速判断"能不能做、为什么没生效"。其中部分限制源自底层依赖（Three.js、3d-tiles-renderer、Takram 生态），部分是 EarthScene 封装层的现状。
+
+## 渲染后端
+
+### WebGL（默认）
+
+完整支持 EarthScene 的所有视觉能力：大气天空、空气透视、体积云、星空、后处理（Bloom、SMAA、镜头光晕、抖动）、瓦片 LOD 淡入淡出。
+
+### WebGPU（实验性）
+
+WebGPU 是实验能力，以下能力在 WebGPU 模式下**不渲染或不支持**：
+
+| 能力 | WebGPU 模式下的状态 |
+| --- | --- |
+| 体积云 | 不渲染（应设 `clouds.show: false`） |
+| 星空 | 支持 `sky.stars.show`、`intensity` 与 `pointSize` |
+| 后处理 | Bloom、LensFlare 与 TAA 支持；SMAA / 抖动不渲染，调整开关无视觉效果 |
+| 瓦片 LOD 淡入淡出 | 不可用，瓦片为直接切换（pop） |
+| 大气散射调试参数 | 部分参数不映射，`light-source` 光照模式支持更完整 |
+| overlay `dayOpacity` / `nightOpacity` | 无视觉效果（WebGPU 地形走单贴图快路径，不跑多层 overlay 合成 shader） |
+
+- WebGPU 模式**不会在不支持的环境上自动回退 WebGL**：不支持时 `renderer.init()` 会 reject，`Viewer.create(...)` 抛错。应用层需自行检测，或设置 `renderer.forceWebGL: true` 走 WebGL2 fallback backend。
+- WebGPU renderer 需异步初始化，推荐用 `Viewer.create(...)`；用 `new Viewer(...)` 时先 `await viewer.ready`。
+- WebGPU TAA 默认关闭。启用 `postProcess.taa` 后会申请高精度 velocity MRT，并为历史颜色维护两张随 drawing buffer 尺寸变化的纹理；动态材质与 `InstancedMesh` 的运动矢量需按项目场景做视觉回归。
+
+## 数据与图层
+
+### 地形
+
+- 仅支持 **Cesium quantized-mesh** 格式（自托管 URL 或 Cesium Ion）。不支持 GeoTIFF、高度图等其它地形格式。
+- 地形裙边、法线生成等渲染参数通过 `terrain.tileLoading` / `TerrainRenderOptions` 配置。
+- `viewer.globe.opacity < 1` 时地形瓦片仍按不透明排序，山脊交叉、与场景 3D Tiles 穿插可能花。`depthWrite=false` 时贴地、场景深度、空气透视里的地面可能对不齐。这不是 Cesium framebuffer translucency。WebGPU 不默认承诺与 WebGL 同品质。`opacity === 0` 仍加载瓦片，不等于 `globe.show = false`。
+
+### 影像图层
+
+- 栅格影像支持 XYZ、WMS、WMTS、Cesium Ion 四种栅格源；矢量图层支持 GeoJSON 和 MVT。
+- GeoJSON / MVT 图层是**把矢量内容栅格化成纹理**贴到地表，不是矢量几何直接渲染。样式以像素为单位，受 `resolution` 影响；极度放大时会出现纹理模糊。
+- 图层透明度 `opacity` 作用于整层；`dayOpacity` / `nightOpacity` 再乘 `opacity`，按太阳方向逐像素混合向阳面和背光面。`color` 乘色作用于整层色调。这不是地球皮肤透明度；淡整张皮肤用 `viewer.globe.opacity`。WebGPU 下这两项没有视觉效果。
+
+### 3D Tiles
+
+- 3D Tiles 作为**独立场景数据**加载，不参与影像 overlay 管线（不能像影像那样贴到地形表面）。
+- 支持 `tileset.json`（URL）和 Cesium Ion 两种加载方式；支持 glTF / GLB / B3DM / pnts 等常见瓦片。Draco 压缩内容默认从 `/draco/` 加载完整 decoder；点云必须用完整 decoder，不能用 `/draco/gltf/`。
+- 摄影测量瓦片的法线可能缺失，影响后处理光照，可用 `creasedNormals: true` 重新生成折痕法线。
+
+## 交互与采样
+
+### 拾取
+
+- 拾取类方法（`pickCartographic`、`pick` / `pickAll`、事件的 `cartographic` / `pick` / `picks`）**只使用当前已加载到场景中的内容**，不会为视角外的区域额外请求瓦片。
+- `pickCartographic` 在未命中 3D Tiles 时回退到 WGS84 椭球表面；对象拾取中的 `tilesFeature` 不回退椭球，只查已加载 3D Tiles；`entity` 层只查当前 Viewer 中已添加且可见的实体。
+
+### 高度采样
+
+- `sampleHeight` 是同步、即时的，**不请求视角外瓦片**，适合当前视图内的每帧贴地查询；视角外或未加载区域返回 `undefined`。
+- `sampleHeightMostDetailed` 会主动加载所需层级瓦片：
+  - 3D Tiles / 混合模式下临时添加的局部加载区域，采样完成后**保留在主场景缓存**中（升温），后续靠近时可复用，但也会占用缓存。
+  - 当 `useDefaultRenderLoop` 为 `false` 时，**必须由调用方继续调用 `render()`** 推进采样，否则任务一直等待，最终超时返回 `undefined`。
+
+## 坐标系
+
+- 对外 API 统一使用**度和米**：纬度 / 经度 / heading / pitch / roll 为度，高度为米（WGS84 椭球海拔）。
+- 经纬高元组输入顺序是 `[经度, 纬度, 高度]`（遵循 GeoJSON），与对象形式 `{ longitude, latitude, height }` 字段顺序相反，混用时易出错。
+- heading / pitch / roll 相对**当地东北天（ENU）坐标系**。
+- 底层 Three.js 世界默认是 ECEF。自行改世界原点时，大气不会自动跟上，需调用 `viewer.scene.atmosphere.setWorldToECEFMatrix` 传入与场景重基准同一套矩阵。地球、相机和控件仍按 ECEF。
+
+## 资源与生命周期
+
+- EarthScene 不托管 Three.js 场景以外的 DOM；销毁 `Viewer` 释放 WebGL 资源、控制器、纹理和事件监听器，但容器元素本身由调用方管理。
+- 页面卸载（`beforeunload`）时浏览器的同步资源释放不可靠，销毁应优先放在组件卸载 / 路由切换时机，`beforeunload` 仅作兜底。
+
+## 不在 EarthScene 能力范围内
+
+以下能力 EarthScene 目前**不提供**，需要应用层自行实现或评估后续是否纳入：
+
+- 地形开挖、地形编辑、等高线生成等地形分析能力。
+- 空间分析（缓冲区、叠加分析、可视域）。
+- 内置轨迹回放、实体/图层时间动画等业务级时间管理。`clock` 是统一场景时间源并自动驱动太阳、月亮和大气；应用可监听其事件驱动业务对象，但 EarthScene 目前不自动绑定这些对象。
+- 地理要素的属性表 UI、图层树 UI（`LayerManager` 只提供数据和状态，不提供界面）。

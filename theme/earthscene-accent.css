@@ -1,0 +1,21 @@
+/**
+ * EarthScene 站点共用主题色。
+ * 文档站（VitePress `--vp-c-brand-*`）和示例站（主页 / Sandcastle / leva）都从这里取值。
+ * 改色只动本文件，不要在各站点再写一份 hex。
+ *
+ * 主色 #40CC9E，实心，不用渐变。
+ */
+:root {
+  --earthscene-accent: #40cc9e;
+  --earthscene-accent-hover: color-mix(in srgb, var(--earthscene-accent) 82%, white);
+  --earthscene-accent-bright: color-mix(in srgb, var(--earthscene-accent) 72%, white);
+  --earthscene-accent-ink: #03110d;
+  --earthscene-accent-rgb: 64, 204, 158;
+  --earthscene-accent-border: rgba(var(--earthscene-accent-rgb), 0.82);
+  --earthscene-accent-glow: rgba(var(--earthscene-accent-rgb), 0.16);
+  --earthscene-accent-soft: rgba(var(--earthscene-accent-rgb), 0.08);
+  --earthscene-accent-mid: rgba(var(--earthscene-accent-rgb), 0.45);
+  --earthscene-accent-mid-strong: rgba(var(--earthscene-accent-rgb), 0.62);
+  /* 浅色底链接 / 标题：压暗一点，但不要混到接近正文黑。 */
+  --earthscene-accent-on-light: color-mix(in srgb, var(--earthscene-accent) 72%, black);
+}

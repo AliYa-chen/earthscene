@@ -1,0 +1,173 @@
+import {
+  buildTiandituTerrainServiceUrls,
+  createTiandituXYZImagerySource,
+  parseTiandituTokens,
+} from "./tiandituLoadBalancer"
+import {
+  localMapSourceProfile,
+  mapSourceCatalog,
+  mapSourceProfiles,
+  productionMapSourceProfile,
+  type MapSourceProfileId,
+} from "./map-sources.config"
+import { getCesiumIonToken } from "./cesium-ion-settings"
+import type {
+  ImageryLayerSourceOptions,
+  TerrainOptions,
+  XYZImagerySourceOptions,
+} from "../src"
+
+export {
+  ARCGIS_WORLD_IMAGERY_URL,
+  CESIUM_ION_BING_AERIAL_ASSET_ID,
+  CESIUM_ION_WORLD_TERRAIN_ASSET_ID,
+  NASA_BLUE_MARBLE_IMAGERY_SOURCE,
+  NASA_BLUE_MARBLE_TILE_PATH,
+  localMapSourceProfile,
+  mapSourceCatalog,
+  mapSourceProfiles,
+  productionMapSourceProfile,
+} from "./map-sources.config"
+export type {
+  ImagerySourceId,
+  MapSourceProfileId,
+  TerrainSourceId,
+} from "./map-sources.config"
+
+const cesiumIonToken = getCesiumIonToken()
+const cesiumTerrainUrl = import.meta.env.VITE_CESIUM_TERRAIN_URL ?? ""
+const tiandituTokens = parseTiandituTokens(import.meta.env.VITE_TIANDITU_TOKEN ?? "")
+
+export interface ExampleMapServiceConfig {
+  profile: MapSourceProfileId
+  createImagerySource(): ImageryLayerSourceOptions | undefined
+  /** 没有可用影像源（例如 Ion token 为空）时返回空数组。 */
+  createOverlays(): Array<{ source: ImageryLayerSourceOptions }>
+  createTerrainOptions(): TerrainOptions | undefined
+}
+
+export interface CreateExampleMapServiceConfigOptions {
+  profile: MapSourceProfileId
+  cesiumIonToken: string
+  cesiumTerrainUrl: string
+  tiandituTokens: string[]
+}
+
+export interface ResolveMapSourceProfileOptions {
+  isDevelopment: boolean
+  localProfile?: MapSourceProfileId
+  productionProfile?: MapSourceProfileId
+}
+
+/**
+ * 生产读 `productionMapSourceProfile`，本地读 `localMapSourceProfile`。
+ *
+ * Production uses `productionMapSourceProfile`. Local development uses
+ * `localMapSourceProfile`.
+ */
+export function resolveMapSourceProfile(
+  options: ResolveMapSourceProfileOptions
+): MapSourceProfileId {
+  if (!options.isDevelopment) {
+    return options.productionProfile ?? productionMapSourceProfile
+  }
+  return options.localProfile ?? localMapSourceProfile
+}
+
+function createArcGisImagerySource(): XYZImagerySourceOptions {
+  return { ...mapSourceCatalog.imagery.arcgis }
+}
+
+function createCesiumIonImagerySource(
+  options: CreateExampleMapServiceConfigOptions
+): ImageryLayerSourceOptions | undefined {
+  if (!options.cesiumIonToken) return undefined
+  return {
+    type: "cesium-ion",
+    assetId: mapSourceCatalog.imagery["cesium-ion"].assetId,
+    apiToken: options.cesiumIonToken,
+  }
+}
+
+function createCesiumIonTerrainOptions(
+  options: CreateExampleMapServiceConfigOptions
+): TerrainOptions | undefined {
+  if (!options.cesiumIonToken) return undefined
+  return {
+    type: "cesium-ion",
+    assetId: mapSourceCatalog.terrain["cesium-ion"].assetId,
+    apiToken: options.cesiumIonToken,
+    tileLoading: { enableTileSplitting: true },
+  }
+}
+
+function createCesiumUrlTerrainOptions(
+  options: CreateExampleMapServiceConfigOptions
+): TerrainOptions | undefined {
+  if (!options.cesiumTerrainUrl) return undefined
+  return {
+    type: "url",
+    url: options.cesiumTerrainUrl,
+    tileLoading: { enableTileSplitting: true },
+  }
+}
+
+function createTiandituTerrainOptions(
+  options: CreateExampleMapServiceConfigOptions
+): TerrainOptions | undefined {
+  const [firstToken] = options.tiandituTokens
+  if (!firstToken) return undefined
+  return {
+    type: "tianditu",
+    apiToken: options.tiandituTokens,
+    urls: buildTiandituTerrainServiceUrls(firstToken),
+    tileLoading: { enableTileSplitting: true },
+  }
+}
+
+export function createExampleMapServiceConfig(
+  options: CreateExampleMapServiceConfigOptions
+): ExampleMapServiceConfig {
+  const { imagery, terrain } = mapSourceProfiles[options.profile]
+
+  const createImagerySource = () => {
+    if (imagery === "tianditu") {
+      return createTiandituXYZImagerySource(options.tiandituTokens)
+    }
+    if (imagery === "cesium-ion") {
+      return createCesiumIonImagerySource(options)
+    }
+    return createArcGisImagerySource()
+  }
+
+  return {
+    profile: options.profile,
+    createImagerySource,
+    createOverlays: () => {
+      const source = createImagerySource()
+      return source ? [{ source }] : []
+    },
+    createTerrainOptions: () => {
+      if (terrain === "tianditu") return createTiandituTerrainOptions(options)
+      if (terrain === "cesium-url") return createCesiumUrlTerrainOptions(options)
+      return createCesiumIonTerrainOptions(options)
+    },
+  }
+}
+
+export const exampleMapSourceProfile = resolveMapSourceProfile({
+  isDevelopment: import.meta.env.DEV,
+  localProfile: localMapSourceProfile,
+  productionProfile: productionMapSourceProfile,
+})
+
+export const exampleMapServiceConfig = createExampleMapServiceConfig({
+  profile: exampleMapSourceProfile,
+  cesiumIonToken,
+  cesiumTerrainUrl,
+  tiandituTokens,
+})
+
+export const defaultTerrainUrl = cesiumTerrainUrl
+export const defaultCesiumIonToken = cesiumIonToken
+export const defaultTiandituTokens = tiandituTokens

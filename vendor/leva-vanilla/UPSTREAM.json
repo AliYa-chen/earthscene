@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/Alkebsi/leva-vanilla",
+  "commit": "4a4eebf76681cf923f0c082c093b141c600bc289",
+  "license": "MIT",
+  "localChanges": [
+    "Adds type: hint schema support, reactive read-only hint rendering, and related TypeScript types for the example panels."
+  ]
+}

@@ -1,0 +1,83 @@
+import { defineConfig } from 'vite'
+import type { Plugin } from 'vite'
+import {
+  isBundledExternalModule,
+  isPeerDependencyExternal
+} from './src/build/peerDependencyExternal'
+
+const earthsceneAssetUrlMarker = '__EARTHSCENE_ASSET_URL__/'
+
+function preserveEarthSceneAssetUrls() {
+  return {
+    name: 'earthscene-preserve-asset-urls',
+    enforce: 'pre' as const,
+    transform(code: string, id: string) {
+      if (!id.replace(/\\/g, '/').endsWith('/src/assets.ts')) return null
+
+      return {
+        code: code.replace(/new URL\('\.\/assets\/earthscene\//g, `new URL(/* @vite-ignore */ '${earthsceneAssetUrlMarker}`),
+        map: null
+      }
+    },
+    generateBundle(_options: unknown, bundle: Record<string, { type: string; code?: string }>) {
+      for (const file of Object.values(bundle)) {
+        if (file.type === 'chunk' && file.code) {
+          file.code = file.code
+            .replace(/\/\*\s*@vite-ignore\s*\*\/\s*/g, '')
+            .replaceAll(earthsceneAssetUrlMarker, './assets/earthscene/')
+        }
+      }
+    }
+  }
+}
+
+function assertPeerDependenciesExternal(): Plugin {
+  return {
+    name: 'earthscene-assert-peer-dependencies-external',
+    generateBundle(_options, bundle) {
+      const bundledPeerModules = new Set<string>()
+
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue
+
+        for (const moduleId of Object.keys(output.modules)) {
+          if (isBundledExternalModule(moduleId)) {
+            bundledPeerModules.add(moduleId)
+          }
+        }
+      }
+
+      if (bundledPeerModules.size > 0) {
+        this.error(
+          `Peer dependencies were bundled unexpectedly:\n${[...bundledPeerModules].join('\n')}`
+        )
+      }
+    }
+  }
+}
+
+export default defineConfig({
+  plugins: [
+    preserveEarthSceneAssetUrls(),
+    assertPeerDependenciesExternal()
+  ],
+  assetsInclude: ['**/*.bin'],
+  optimizeDeps: {
+    include: ['@mapbox/vector-tile', 'pbf']
+  },
+  build: {
+    lib: {
+      entry: {
+        index: 'src/index.ts',
+        cesium: 'src/cesium/index.ts',
+        assets: 'src/assets.ts'
+      },
+      formats: ['es'],
+      fileName: (_format, entryName) => `${entryName}.js`
+    },
+    sourcemap: true,
+    rollupOptions: {
+      external: isPeerDependencyExternal
+    }
+  }
+})

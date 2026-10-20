@@ -1,0 +1,969 @@
+import * as monaco from "monaco-editor"
+import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker"
+import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
+import packageJson from "../../package.json"
+import { mountExampleSettings } from "../cesium-ion-settings"
+import {
+  applyTranslations,
+  mountLanguageToggle,
+  onLocaleChange,
+  pickLocalized,
+  resolveLocale,
+  t,
+} from "../i18n"
+import {
+  defaultSandcastleExample,
+  getSandcastleExample,
+  sandcastleExamples,
+} from "./registry"
+import type {
+  SandcastleEditorPane,
+  SandcastleExample,
+  SandcastleRunPayload,
+  SandboxMessage,
+} from "./types"
+
+const earthsceneSourceModules = import.meta.glob("../../src/**/*.ts", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+}) as Record<string, string>
+
+const exampleSourceModules = import.meta.glob("../*.ts", {
+  eager: true,
+  query: "?raw",
+  import: "default",
+}) as Record<string, string>
+
+self.MonacoEnvironment = {
+  getWorker(_workerId: string, label: string) {
+    if (label === "typescript" || label === "javascript") {
+      return new tsWorker()
+    }
+    return new editorWorker()
+  },
+}
+
+const STORAGE_PREFIX = "earthscene:sandcastle-run:"
+const MAX_STORED_RUNS = 6
+const earthsceneVersion = `v${packageJson.version}`
+const root = document.querySelector("#sandcastle-root")
+
+if (!(root instanceof HTMLElement)) {
+  throw new Error("Sandcastle root not found.")
+}
+
+const sandcastleRoot = root
+
+function queryRequired<T extends Element>(
+  selector: string,
+  elementConstructor: { new (...args: any[]): T }
+) {
+  const element = sandcastleRoot.querySelector(selector)
+  if (!(element instanceof elementConstructor)) {
+    throw new Error(`Sandcastle UI element not found: ${selector}`)
+  }
+  return element
+}
+
+root.innerHTML = `
+  <main class="sandcastle">
+    <header class="sandcastle-topbar">
+      <a class="portal-brand" href="./index.html" data-i18n-attr="aria-label:sandcastle.brand.homeAria" aria-label="EarthScene 首页">
+        <span class="portal-brand__mark" aria-hidden="true">T</span>
+        <span>EarthScene</span>
+      </a>
+      <div class="sandcastle-title">
+        <strong>${earthsceneVersion}</strong>
+      </div>
+      <div class="sandcastle-actions" data-i18n-attr="aria-label:sandcastle.actions.aria" aria-label="示例操作">
+        <div data-example-settings></div>
+        <div data-lang-toggle></div>
+        <a class="sandcastle-button" data-action="standalone" href="./sandcastle/runner.html" target="_blank" rel="noreferrer">Standalone</a>
+      </div>
+    </header>
+    <nav class="sandcastle-rail" data-i18n-attr="aria-label:sandcastle.rail.aria" aria-label="Sandcastle views">
+      <button class="sandcastle-rail__button" data-view="examples" type="button" data-i18n-attr="aria-label:sandcastle.rail.examples" aria-label="案例">
+        <span aria-hidden="true">▧</span>
+      </button>
+      <button class="sandcastle-rail__button" data-view="code" type="button" data-i18n-attr="aria-label:sandcastle.rail.code" aria-label="代码">
+        <span aria-hidden="true">&lt;/&gt;</span>
+      </button>
+      <a class="sandcastle-rail__button sandcastle-rail__link" data-action="open-docs" href="./docs/" target="_blank" rel="noreferrer" data-i18n-attr="aria-label:sandcastle.rail.docs,title:sandcastle.rail.docs" aria-label="文档" title="文档">
+        <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+        </svg>
+      </a>
+    </nav>
+    <aside class="sandcastle-sidebar" data-panel="examples" data-i18n-attr="aria-label:sandcastle.sidebar.aria" aria-label="示例列表">
+      <div class="sandcastle-sidebar__search">
+        <label class="sandcastle-search-field">
+          <svg class="sandcastle-search-field__icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m16 16 4 4" />
+          </svg>
+          <input class="sandcastle-search" type="search" data-i18n-attr="placeholder:sandcastle.search.placeholder,aria-label:sandcastle.search.placeholder" placeholder="搜索示例或标签" aria-label="搜索示例或标签" />
+        </label>
+        <button class="sandcastle-side-toggle" data-action="toggle-side-panel" type="button" aria-expanded="true" data-i18n-attr="aria-label:sandcastle.side.collapse,title:sandcastle.side.collapse" aria-label="收起侧边栏" title="收起侧边栏"></button>
+      </div>
+      <div class="sandcastle-gallery__list"></div>
+    </aside>
+    <section class="sandcastle-editor-panel" data-panel="code" data-i18n-attr="aria-label:sandcastle.editor.aria" aria-label="代码编辑">
+      <div class="sandcastle-editor-tabs" role="tablist" data-i18n-attr="aria-label:sandcastle.editor.tabsAria" aria-label="代码类型">
+        <button class="sandcastle-editor-tab" data-pane="javascript" type="button" role="tab">Javascript</button>
+        <button class="sandcastle-editor-tab" data-pane="html" type="button" role="tab">HTML/CSS</button>
+        <div class="sandcastle-editor-actions" data-i18n-attr="aria-label:sandcastle.editor.actionsAria" aria-label="代码操作">
+          <button class="sandcastle-button sandcastle-button--primary" data-action="run" type="button">Run</button>
+        </div>
+        <button class="sandcastle-side-toggle" data-action="toggle-side-panel" type="button" aria-expanded="true" data-i18n-attr="aria-label:sandcastle.side.collapse,title:sandcastle.side.collapse" aria-label="收起侧边栏" title="收起侧边栏"></button>
+      </div>
+      <div class="sandcastle-editor" id="sandcastle-editor"></div>
+    </section>
+    <div class="sandcastle-splitter" role="separator" aria-orientation="vertical" data-i18n-attr="aria-label:sandcastle.splitter.aria" aria-label="调整代码与预览区域宽度" tabindex="0"></div>
+    <section class="sandcastle-stage" data-i18n-attr="aria-label:sandcastle.stage.aria" aria-label="预览与控制台">
+      <div class="sandcastle-preview-panel">
+        <iframe class="sandcastle-preview" data-i18n-attr="title:sandcastle.preview.iframeTitle" title="EarthScene Sandcastle preview" sandbox="allow-scripts allow-same-origin"></iframe>
+        <div class="sandcastle-preview-loading" role="status" aria-live="polite" aria-hidden="true">
+          <span class="sandcastle-preview-loading__ring" aria-hidden="true"></span>
+          <span data-i18n="sandcastle.preview.loading">Loading example...</span>
+        </div>
+        <button class="sandcastle-preview-fullscreen" data-action="toggle-preview-fullscreen" type="button" data-i18n-attr="aria-label:sandcastle.preview.fullscreen,title:sandcastle.preview.fullscreen" aria-label="全屏预览" title="全屏预览">
+          <svg class="sandcastle-preview-fullscreen__enter" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+            <path d="M8 3H3v5" />
+            <path d="M3 3l7 7" />
+            <path d="M16 3h5v5" />
+            <path d="M21 3l-7 7" />
+            <path d="M8 21H3v-5" />
+            <path d="M3 21l7-7" />
+            <path d="M16 21h5v-5" />
+            <path d="M21 21l-7-7" />
+          </svg>
+          <svg class="sandcastle-preview-fullscreen__exit" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+            <path d="M10 4v6H4" />
+            <path d="M4 10l7-7" />
+            <path d="M14 4v6h6" />
+            <path d="M20 10l-7-7" />
+            <path d="M10 20v-6H4" />
+            <path d="M4 14l7 7" />
+            <path d="M14 20v-6h6" />
+            <path d="M20 14l-7 7" />
+          </svg>
+        </button>
+      </div>
+      <section class="sandcastle-console" data-i18n-attr="aria-label:sandcastle.console.aria" aria-label="Console">
+        <div class="sandcastle-console-resizer" role="separator" aria-orientation="horizontal" data-i18n-attr="aria-label:sandcastle.console.resizeAria" aria-label="调整 Console 高度" tabindex="0"></div>
+        <header>
+          <div class="sandcastle-console__title">
+            <button class="sandcastle-console__toggle" data-action="toggle-console" type="button" aria-expanded="true" data-i18n-attr="aria-label:sandcastle.console.collapse,title:sandcastle.console.collapse" aria-label="折叠 Console" title="折叠 Console"></button>
+            <span>Console</span>
+          </div>
+          <div class="sandcastle-console__actions">
+            <button class="sandcastle-console__clear" data-action="clear-console" type="button">
+              <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+                <path d="M3 6h18" />
+                <path d="M8 6V4h8v2" />
+                <path d="M19 6l-1 14H6L5 6" />
+                <path d="M10 11v5" />
+                <path d="M14 11v5" />
+              </svg>
+              <span>Clear</span>
+            </button>
+          </div>
+        </header>
+        <div class="sandcastle-console__body" aria-live="polite"></div>
+      </section>
+    </section>
+  </main>
+`
+
+resolveLocale()
+applyTranslations(sandcastleRoot)
+const settingsMount = sandcastleRoot.querySelector("[data-example-settings]")
+if (settingsMount instanceof HTMLElement) {
+  mountExampleSettings({ mount: settingsMount })
+}
+mountLanguageToggle({
+  mount: sandcastleRoot.querySelector("[data-lang-toggle]"),
+  applyDocument: false,
+  onChange: () => {
+    applyTranslations(sandcastleRoot)
+    setConsoleCollapsed(isConsoleCollapsed)
+    updatePreviewFullscreenState()
+    setSidePanelCollapsed(isSidePanelCollapsed)
+    filterExamples(searchInput.value)
+  },
+})
+onLocaleChange(() => {
+  applyTranslations(sandcastleRoot)
+})
+
+const railButtons = Array.from(
+  sandcastleRoot.querySelectorAll<HTMLButtonElement>(".sandcastle-rail__button")
+)
+const galleryList = queryRequired(".sandcastle-gallery__list", HTMLElement)
+const searchInput = queryRequired(".sandcastle-search", HTMLInputElement)
+const editorElement = queryRequired("#sandcastle-editor", HTMLElement)
+const layoutElement = queryRequired(".sandcastle", HTMLElement)
+const splitter = queryRequired(".sandcastle-splitter", HTMLElement)
+const stageElement = queryRequired(".sandcastle-stage", HTMLElement)
+const previewPanel = queryRequired(".sandcastle-preview-panel", HTMLElement)
+const consoleResizer = queryRequired(".sandcastle-console-resizer", HTMLElement)
+const previewFrame = queryRequired(".sandcastle-preview", HTMLIFrameElement)
+const previewLoading = queryRequired(".sandcastle-preview-loading", HTMLElement)
+const consoleBody = queryRequired(".sandcastle-console__body", HTMLElement)
+const runButton = queryRequired('[data-action="run"]', HTMLButtonElement)
+const standaloneLink = queryRequired(
+  '[data-action="standalone"]',
+  HTMLAnchorElement
+)
+const docsLink = queryRequired('[data-action="open-docs"]', HTMLAnchorElement)
+const clearConsoleButton = queryRequired(
+  '[data-action="clear-console"]',
+  HTMLButtonElement
+)
+const toggleConsoleButton = queryRequired(
+  '[data-action="toggle-console"]',
+  HTMLButtonElement
+)
+const togglePreviewFullscreenButton = queryRequired(
+  '[data-action="toggle-preview-fullscreen"]',
+  HTMLButtonElement
+)
+const toggleSidePanelButtons = Array.from(
+  sandcastleRoot.querySelectorAll<HTMLButtonElement>(
+    '[data-action="toggle-side-panel"]'
+  )
+)
+const paneButtons = Array.from(
+  sandcastleRoot.querySelectorAll<HTMLButtonElement>(".sandcastle-editor-tab")
+)
+const sandcastleScriptUri = monaco.Uri.parse(
+  "file:///earthscene/examples/sandcastle-current.ts"
+)
+const sandcastleHtmlUri = monaco.Uri.parse(
+  "file:///earthscene/examples/sandcastle-current.html"
+)
+
+if (toggleSidePanelButtons.length === 0) {
+  throw new Error(
+    'Sandcastle UI element not found: [data-action="toggle-side-panel"]'
+  )
+}
+
+function toVirtualProjectPath(modulePath: string) {
+  const normalizedPath = modulePath.replace(/\\/g, "/")
+  if (normalizedPath.startsWith("../../src/")) {
+    return `file:///earthscene/src/${normalizedPath.slice("../../src/".length)}`
+  }
+  if (normalizedPath.startsWith("../")) {
+    return `file:///earthscene/examples/${normalizedPath.slice("../".length)}`
+  }
+  return `file:///earthscene/${normalizedPath.replace(/^\.\//, "")}`
+}
+
+function getSandcastleTypeLibs() {
+  const sourceLibs = Object.entries({
+    ...earthsceneSourceModules,
+    ...exampleSourceModules,
+  }).map(([modulePath, content]) => ({
+    filePath: toVirtualProjectPath(modulePath),
+    content,
+  }))
+
+  return [
+    ...sourceLibs,
+    {
+      filePath: "file:///earthscene/src.ts",
+      content:
+        'export * from "./src/index"\nexport { default } from "./src/index"\n',
+    },
+  ]
+}
+
+function configureTypeScriptDefaults(
+  defaults: typeof monaco.languages.typescript.typescriptDefaults,
+  checkJs: boolean
+) {
+  defaults.setCompilerOptions({
+    allowNonTsExtensions: true,
+    allowSyntheticDefaultImports: true,
+    checkJs,
+    module: monaco.languages.typescript.ModuleKind.ESNext,
+    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+    noEmitOnError: false,
+    skipLibCheck: true,
+    target: monaco.languages.typescript.ScriptTarget.Latest,
+  })
+  defaults.setExtraLibs(getSandcastleTypeLibs())
+  defaults.setEagerModelSync(true)
+}
+
+configureTypeScriptDefaults(
+  monaco.languages.typescript.javascriptDefaults,
+  true
+)
+configureTypeScriptDefaults(
+  monaco.languages.typescript.typescriptDefaults,
+  false
+)
+
+const models: Record<SandcastleEditorPane, monaco.editor.ITextModel> = {
+  javascript: monaco.editor.createModel("", "typescript", sandcastleScriptUri),
+  html: monaco.editor.createModel("", "html", sandcastleHtmlUri),
+}
+
+const editor = monaco.editor.create(editorElement, {
+  model: models.javascript,
+  theme: "vs-dark",
+  minimap: { enabled: false },
+  fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
+  fontSize: 13,
+  lineHeight: 21,
+  automaticLayout: true,
+  scrollBeyondLastLine: false,
+  tabSize: 2,
+  wordWrap: "on",
+  quickSuggestions: {
+    other: true,
+    comments: false,
+    strings: true,
+  },
+  suggestOnTriggerCharacters: true,
+})
+
+let activeExample = getSandcastleExample(
+  new URLSearchParams(window.location.search).get("example")
+)
+let displayedExamples = sandcastleExamples
+let activePane: SandcastleEditorPane = "javascript"
+let activeView: "examples" | "code" = activeExample ? "code" : "examples"
+let isSidePanelCollapsed = false
+let isConsoleCollapsed = false
+let isDraggingSplitter = false
+let isDraggingConsole = false
+let consoleHeight = 150
+let activeRunId: string | null = null
+
+function getDocsUrl() {
+  const isLocalHost =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1" ||
+    window.location.hostname === "::1"
+
+  // 开发时文档站由 docs:dev / pnpm dev 独立跑在根路径（vitepress，无 /docs base）；
+  // 端口可能因占用回退，由 VITE_EARTHSCENE_DOCS_ORIGIN 注入实际地址。
+  if (isLocalHost && import.meta.env.DEV) {
+    const origin = (
+      import.meta.env.VITE_EARTHSCENE_DOCS_ORIGIN || "http://127.0.0.1:5174"
+    ).replace(/\/$/, "")
+    return `${origin}/`
+  }
+
+  return new URL("./docs/", window.location.href).toString()
+}
+
+function createRunKey() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function getStoredRunEntries() {
+  const entries: Array<{ key: string; createdAt: number }> = []
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const storageKey = localStorage.key(index)
+    if (!storageKey?.startsWith(STORAGE_PREFIX)) {
+      continue
+    }
+    const runKey = storageKey.slice(STORAGE_PREFIX.length)
+    const timestamp = Number.parseInt(runKey.split("-")[0] ?? "", 36)
+    entries.push({
+      key: storageKey,
+      createdAt: Number.isFinite(timestamp) ? timestamp : 0,
+    })
+  }
+  return entries.sort((left, right) => left.createdAt - right.createdAt)
+}
+
+function pruneStoredRuns(maxRuns: number) {
+  const entries = getStoredRunEntries()
+  const removeCount = Math.max(0, entries.length - maxRuns)
+  for (const entry of entries.slice(0, removeCount)) {
+    localStorage.removeItem(entry.key)
+  }
+}
+
+function clearStoredRuns() {
+  for (const entry of getStoredRunEntries()) {
+    localStorage.removeItem(entry.key)
+  }
+}
+
+function isStorageQuotaExceeded(error: unknown) {
+  return (
+    error instanceof DOMException &&
+    (error.name === "QuotaExceededError" ||
+      error.name === "NS_ERROR_DOM_QUOTA_REACHED")
+  )
+}
+
+function saveRunPayload(key: string, payload: SandcastleRunPayload) {
+  const storageKey = `${STORAGE_PREFIX}${key}`
+  const serializedPayload = JSON.stringify(payload)
+
+  pruneStoredRuns(MAX_STORED_RUNS - 1)
+  try {
+    localStorage.setItem(storageKey, serializedPayload)
+  } catch (error) {
+    if (!isStorageQuotaExceeded(error)) {
+      throw error
+    }
+    clearStoredRuns()
+    localStorage.setItem(storageKey, serializedPayload)
+  }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+async function getRegisteredTypeScriptWorker() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      return await monaco.languages.typescript.getTypeScriptWorker()
+    } catch (error) {
+      if (String(error) !== "TypeScript not registered!" || attempt === 19) {
+        throw error
+      }
+      await sleep(25)
+    }
+  }
+  return monaco.languages.typescript.getTypeScriptWorker()
+}
+
+async function getCompiledJavascript() {
+  const worker = await getRegisteredTypeScriptWorker()
+  const client = await worker(models.javascript.uri)
+  const output = await client.getEmitOutput(models.javascript.uri.toString())
+  return output.outputFiles[0]?.text ?? models.javascript.getValue()
+}
+
+async function getCurrentPayload(runId: string): Promise<SandcastleRunPayload> {
+  return {
+    runId,
+    html: models.html.getValue(),
+    javascript: models.javascript.getValue(),
+    compiledJavascript: await getCompiledJavascript(),
+  }
+}
+
+function createRunnerUrl(payload: SandcastleRunPayload) {
+  const key = createRunKey()
+  saveRunPayload(key, payload)
+  const params = new URLSearchParams({
+    run: key,
+    runId: payload.runId,
+  })
+  return `./sandcastle/runner.html?${params.toString()}`
+}
+
+function setPreviewLoading(isLoading: boolean) {
+  previewPanel.toggleAttribute("data-loading", isLoading)
+  previewFrame.toggleAttribute("aria-busy", isLoading)
+  previewLoading.setAttribute("aria-hidden", String(!isLoading))
+}
+
+function appendConsoleLine(level: string, values: string[]) {
+  const line = document.createElement("div")
+  line.className = `sandcastle-console__line sandcastle-console__line--${level}`
+  const prefix = document.createElement("span")
+  prefix.textContent = level
+  const message = document.createElement("pre")
+  message.textContent = values.join(" ")
+  line.append(prefix, message)
+  consoleBody.appendChild(line)
+  consoleBody.scrollTop = consoleBody.scrollHeight
+}
+
+function clearConsole() {
+  consoleBody.innerHTML = ""
+}
+
+function setConsoleCollapsed(isCollapsed: boolean) {
+  isConsoleCollapsed = isCollapsed
+  stageElement.toggleAttribute("data-console-collapsed", isConsoleCollapsed)
+  stageElement.style.setProperty(
+    "--sandcastle-console-height",
+    isConsoleCollapsed ? "36px" : `${consoleHeight}px`
+  )
+  toggleConsoleButton.setAttribute("aria-expanded", String(!isConsoleCollapsed))
+  const label = isConsoleCollapsed
+    ? t("sandcastle.console.expand")
+    : t("sandcastle.console.collapse")
+  toggleConsoleButton.setAttribute("aria-label", label)
+  toggleConsoleButton.title = label
+}
+
+function updatePreviewFullscreenState() {
+  const isFullscreen = document.fullscreenElement === previewPanel
+  previewPanel.toggleAttribute("data-preview-fullscreen", isFullscreen)
+  togglePreviewFullscreenButton.setAttribute(
+    "aria-pressed",
+    String(isFullscreen)
+  )
+  const label = isFullscreen
+    ? t("sandcastle.preview.exitFullscreen")
+    : t("sandcastle.preview.fullscreen")
+  togglePreviewFullscreenButton.setAttribute("aria-label", label)
+  togglePreviewFullscreenButton.title = label
+}
+
+async function togglePreviewFullscreen() {
+  try {
+    if (document.fullscreenElement === previewPanel) {
+      await document.exitFullscreen()
+    } else {
+      await previewPanel.requestFullscreen()
+    }
+    updatePreviewFullscreenState()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    appendConsoleLine("error", [`Unable to toggle fullscreen: ${message}`])
+  }
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function setSidePanelCollapsed(isCollapsed: boolean) {
+  isSidePanelCollapsed = isCollapsed
+  layoutElement.toggleAttribute("data-side-collapsed", isSidePanelCollapsed)
+  toggleSidePanelButtons.forEach((button) => {
+    button.setAttribute("aria-expanded", String(!isSidePanelCollapsed))
+    const label = t("sandcastle.side.collapse")
+    button.setAttribute("aria-label", label)
+    button.title = label
+  })
+  if (isSidePanelCollapsed) {
+    layoutElement.toggleAttribute("data-resizing", false)
+    sandcastleRoot
+      .querySelectorAll<HTMLElement>("[data-panel]")
+      .forEach((panel) => {
+        panel.toggleAttribute("data-active", false)
+      })
+    railButtons.forEach((button) => {
+      button.toggleAttribute("data-active", false)
+      button.setAttribute("aria-current", "false")
+    })
+    requestAnimationFrame(() => editor.layout())
+  } else if (activeView === "code") {
+    requestAnimationFrame(() => editor.layout())
+  }
+}
+
+function updateSplitterPosition(clientX: number) {
+  const layoutRect = layoutElement.getBoundingClientRect()
+  const railWidth =
+    sandcastleRoot.querySelector(".sandcastle-rail")?.getBoundingClientRect()
+      .width ?? 52
+  const splitterWidth = splitter.getBoundingClientRect().width
+  const availableWidth = layoutRect.width - railWidth - splitterWidth
+  const minPanelWidth = 320
+  const maxLeftWidth = Math.max(minPanelWidth, availableWidth - minPanelWidth)
+  const nextLeftWidth = clamp(
+    clientX - layoutRect.left - railWidth - splitterWidth / 2,
+    minPanelWidth,
+    maxLeftWidth
+  )
+  layoutElement.style.setProperty(
+    "--sandcastle-left-width",
+    `${nextLeftWidth}px`
+  )
+  editor.layout()
+}
+
+function updateConsoleHeight(clientY: number) {
+  const stageRect = stageElement.getBoundingClientRect()
+  const headerHeight = 40
+  const minPreviewHeight = 220
+  const maxConsoleHeight = Math.max(
+    headerHeight,
+    stageRect.height - minPreviewHeight
+  )
+  const nextConsoleHeight = clamp(
+    stageRect.bottom - clientY,
+    headerHeight,
+    maxConsoleHeight
+  )
+  consoleHeight = nextConsoleHeight
+  stageElement.style.setProperty(
+    "--sandcastle-console-height",
+    `${nextConsoleHeight}px`
+  )
+}
+
+async function runCurrentCode() {
+  clearConsole()
+  appendConsoleLine("info", ["Running example..."])
+  setStandaloneEnabled(false)
+  const runId = createRunKey()
+  activeRunId = runId
+  setPreviewLoading(true)
+  try {
+    const url = createRunnerUrl(await getCurrentPayload(runId))
+    previewFrame.src = url
+    standaloneLink.href = url
+    setStandaloneEnabled(true)
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.stack ?? error.message : String(error)
+    appendConsoleLine("error", [message])
+    if (activeRunId === runId) {
+      activeRunId = null
+      setPreviewLoading(false)
+    }
+  }
+}
+
+function setStandaloneEnabled(isEnabled: boolean) {
+  standaloneLink.toggleAttribute("aria-disabled", !isEnabled)
+  standaloneLink.tabIndex = isEnabled ? 0 : -1
+}
+
+function selectPane(pane: SandcastleEditorPane) {
+  activePane = pane
+  editor.setModel(models[pane])
+  paneButtons.forEach((button) => {
+    const isActive = button.dataset.pane === pane
+    button.toggleAttribute("data-active", isActive)
+    button.setAttribute("aria-selected", String(isActive))
+  })
+  editor.focus()
+}
+
+function selectView(view: "examples" | "code") {
+  activeView = view
+  setSidePanelCollapsed(false)
+  sandcastleRoot
+    .querySelectorAll<HTMLElement>("[data-panel]")
+    .forEach((panel) => {
+      panel.toggleAttribute("data-active", panel.dataset.panel === view)
+    })
+  railButtons.forEach((button) => {
+    const isActive = button.dataset.view === view
+    button.toggleAttribute("data-active", isActive)
+    button.setAttribute("aria-current", isActive ? "page" : "false")
+  })
+  if (view === "code") {
+    requestAnimationFrame(() => editor.layout())
+  }
+}
+
+function selectExample(example: SandcastleExample, shouldRun = true) {
+  activeExample = example
+  models.javascript.setValue(example.javascript)
+  models.html.setValue(example.html)
+  const url = new URL(window.location.href)
+  url.searchParams.set("example", example.id)
+  window.history.replaceState(null, "", url)
+  updateGalleryActiveState()
+  selectPane(activePane)
+  selectView("code")
+  if (shouldRun) {
+    void runCurrentCode()
+  }
+}
+
+function loadDefaultExample() {
+  activeExample = defaultSandcastleExample
+  models.javascript.setValue(defaultSandcastleExample.javascript)
+  models.html.setValue(defaultSandcastleExample.html)
+  updateGalleryActiveState()
+  selectPane(activePane)
+  selectView("examples")
+  void runCurrentCode()
+}
+
+function updateDescriptionTitle(description: HTMLElement, fullText: string) {
+  const isClamped =
+    description.scrollHeight > description.clientHeight + 1 ||
+    description.scrollWidth > description.clientWidth + 1
+
+  if (isClamped) {
+    description.title = fullText
+  } else {
+    description.removeAttribute("title")
+  }
+}
+
+function renderGallery(examples: SandcastleExample[]) {
+  galleryList.innerHTML = ""
+  for (const example of examples) {
+    const title = pickLocalized(example.title)
+    const description = pickLocalized(example.description)
+    const button = document.createElement("button")
+    button.className = "sandcastle-card"
+    button.type = "button"
+    button.dataset.exampleId = example.id
+    button.toggleAttribute("data-active", example.id === activeExample?.id)
+    button.innerHTML = `
+      <span class="sandcastle-card__thumb" aria-hidden="true"></span>
+      <span class="sandcastle-card__body">
+        <span class="sandcastle-card__category">${example.category}</span>
+        <strong>${title}</strong>
+        <span class="sandcastle-card__description">${description}</span>
+        <span class="sandcastle-card__tags">${example.tags
+          .map((tag) => `<em>${tag}</em>`)
+          .join("")}</span>
+      </span>
+    `
+    const descriptionEl = button.querySelector<HTMLElement>(
+      ".sandcastle-card__description"
+    )
+    if (descriptionEl) {
+      descriptionEl.addEventListener("pointerenter", () => {
+        updateDescriptionTitle(descriptionEl, description)
+      })
+    }
+    if (example.thumbnail) {
+      const thumb = button.querySelector<HTMLElement>(".sandcastle-card__thumb")
+      if (thumb) {
+        thumb.style.backgroundImage = `url("${example.thumbnail}")`
+      }
+    }
+    button.addEventListener("click", () => selectExample(example))
+    galleryList.appendChild(button)
+    if (descriptionEl) {
+      updateDescriptionTitle(descriptionEl, description)
+    }
+  }
+}
+
+function updateGalleryActiveState() {
+  galleryList
+    .querySelectorAll<HTMLElement>(".sandcastle-card")
+    .forEach((card) => {
+      card.toggleAttribute(
+        "data-active",
+        card.dataset.exampleId === activeExample?.id
+      )
+    })
+}
+
+function filterExamples(query: string) {
+  const text = query.trim().toLowerCase()
+  displayedExamples = text
+    ? sandcastleExamples.filter((example) => {
+        const haystack = [
+          example.title.zh,
+          example.title.en,
+          example.category,
+          example.description.zh,
+          example.description.en,
+          example.sourceHtmlPath,
+          example.sourceScriptPath,
+          ...example.tags,
+        ]
+          .join(" ")
+          .toLowerCase()
+        return haystack.includes(text)
+      })
+    : sandcastleExamples
+  renderGallery(displayedExamples)
+}
+
+runButton.addEventListener("click", () => {
+  void runCurrentCode()
+})
+docsLink.href = getDocsUrl()
+docsLink.addEventListener("click", (event) => {
+  event.preventDefault()
+  window.open(docsLink.href, "_blank", "noopener")?.focus()
+})
+standaloneLink.addEventListener("click", (event) => {
+  if (standaloneLink.getAttribute("aria-disabled") === "true") {
+    event.preventDefault()
+  }
+})
+clearConsoleButton.addEventListener("click", clearConsole)
+toggleConsoleButton.addEventListener("click", () =>
+  setConsoleCollapsed(!isConsoleCollapsed)
+)
+togglePreviewFullscreenButton.addEventListener("click", () => {
+  void togglePreviewFullscreen()
+})
+toggleSidePanelButtons.forEach((button) => {
+  button.addEventListener("click", () =>
+    setSidePanelCollapsed(!isSidePanelCollapsed)
+  )
+})
+searchInput.addEventListener("input", () => filterExamples(searchInput.value))
+document.addEventListener("fullscreenchange", updatePreviewFullscreenState)
+
+splitter.addEventListener("pointerdown", (event) => {
+  if (
+    isSidePanelCollapsed ||
+    window.matchMedia("(max-width: 1080px)").matches
+  ) {
+    return
+  }
+  isDraggingSplitter = true
+  splitter.setPointerCapture(event.pointerId)
+  layoutElement.toggleAttribute("data-resizing", true)
+  updateSplitterPosition(event.clientX)
+})
+
+splitter.addEventListener("pointermove", (event) => {
+  if (!isDraggingSplitter) {
+    return
+  }
+  updateSplitterPosition(event.clientX)
+})
+
+splitter.addEventListener("pointerup", (event) => {
+  isDraggingSplitter = false
+  if (splitter.hasPointerCapture(event.pointerId)) {
+    splitter.releasePointerCapture(event.pointerId)
+  }
+  layoutElement.toggleAttribute("data-resizing", false)
+})
+
+splitter.addEventListener("pointercancel", () => {
+  isDraggingSplitter = false
+  layoutElement.toggleAttribute("data-resizing", false)
+})
+
+splitter.addEventListener("keydown", (event) => {
+  if (isSidePanelCollapsed) {
+    return
+  }
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+    return
+  }
+  const currentWidth =
+    Number.parseFloat(
+      getComputedStyle(layoutElement).getPropertyValue(
+        "--sandcastle-left-width"
+      )
+    ) || layoutElement.getBoundingClientRect().width * 0.48
+  const direction = event.key === "ArrowLeft" ? -1 : 1
+  const layoutRect = layoutElement.getBoundingClientRect()
+  const railWidth =
+    sandcastleRoot.querySelector(".sandcastle-rail")?.getBoundingClientRect()
+      .width ?? 52
+  const splitterWidth = splitter.getBoundingClientRect().width
+  const availableWidth = layoutRect.width - railWidth - splitterWidth
+  const nextWidth = clamp(
+    currentWidth + direction * 24,
+    320,
+    Math.max(320, availableWidth - 320)
+  )
+  layoutElement.style.setProperty("--sandcastle-left-width", `${nextWidth}px`)
+  editor.layout()
+  event.preventDefault()
+})
+
+consoleResizer.addEventListener("pointerdown", (event) => {
+  isDraggingConsole = true
+  setConsoleCollapsed(false)
+  consoleResizer.setPointerCapture(event.pointerId)
+  stageElement.toggleAttribute("data-console-resizing", true)
+  updateConsoleHeight(event.clientY)
+})
+
+consoleResizer.addEventListener("pointermove", (event) => {
+  if (!isDraggingConsole) {
+    return
+  }
+  updateConsoleHeight(event.clientY)
+})
+
+consoleResizer.addEventListener("pointerup", (event) => {
+  isDraggingConsole = false
+  if (consoleResizer.hasPointerCapture(event.pointerId)) {
+    consoleResizer.releasePointerCapture(event.pointerId)
+  }
+  stageElement.toggleAttribute("data-console-resizing", false)
+})
+
+consoleResizer.addEventListener("pointercancel", () => {
+  isDraggingConsole = false
+  stageElement.toggleAttribute("data-console-resizing", false)
+})
+
+consoleResizer.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+    return
+  }
+  setConsoleCollapsed(false)
+  const currentHeight =
+    Number.parseFloat(
+      getComputedStyle(stageElement).getPropertyValue(
+        "--sandcastle-console-height"
+      )
+    ) || 150
+  const stageRect = stageElement.getBoundingClientRect()
+  const direction = event.key === "ArrowUp" ? 1 : -1
+  const nextHeight = clamp(
+    currentHeight + direction * 20,
+    40,
+    Math.max(40, stageRect.height - 220)
+  )
+  consoleHeight = nextHeight
+  stageElement.style.setProperty(
+    "--sandcastle-console-height",
+    `${nextHeight}px`
+  )
+  event.preventDefault()
+})
+
+railButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    if (button.dataset.view === "examples" || button.dataset.view === "code") {
+      selectView(button.dataset.view)
+    }
+  })
+})
+
+paneButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    if (
+      button.dataset.pane === "javascript" ||
+      button.dataset.pane === "html"
+    ) {
+      selectPane(button.dataset.pane)
+    }
+  })
+})
+
+window.addEventListener("message", (event: MessageEvent<SandboxMessage>) => {
+  if (event.origin !== window.location.origin) {
+    return
+  }
+  const message = event.data
+  if (message.type === "sandbox-log") {
+    if (!message.runId || message.runId === activeRunId) {
+      appendConsoleLine(message.level, message.values)
+    }
+  } else if (message.type === "sandbox-ready") {
+    if (!message.runId || message.runId === activeRunId) {
+      activeRunId = null
+      setPreviewLoading(false)
+    }
+  } else if (message.type === "sandbox-error") {
+    appendConsoleLine("error", [message.message])
+    if (!message.runId || message.runId === activeRunId) {
+      activeRunId = null
+      setPreviewLoading(false)
+    }
+  }
+})
+
+renderGallery(displayedExamples)
+selectPane(activePane)
+selectView(activeView)
+if (activeExample) {
+  selectExample(activeExample)
+} else {
+  loadDefaultExample()
+}

@@ -1,0 +1,84 @@
+> 实现范围：本文描述当前默认 Three.js 入口；其中的 API 和能力不表示已由 Cesium 实现。独立 Cesium 子模块与迁移范围见[项目状态](/guide/project-status)。
+
+# 快速开始
+
+EarthScene 是面向 Web 的开源三维地球引擎，公开包名为 `earthscene`。它用于在浏览器中快速构建基于真实经纬坐标系和物理尺度的数字地球、数字孪生、三维地图等各类 3D Earth 应用。
+
+它建立在 Three.js 强大的渲染能力与丰富的开源生态之上，通过整合社区成熟开源项目能力，提供统一的 API 来组织地球相机、Cesium Quantized Mesh 地形、多源影像与矢量图层、3D Tiles、三维模型、天空大气、体积云及后处理效果。
+
+## 安装
+
+```bash
+npm install earthscene three 3d-tiles-renderer @takram/three-geospatial @takram/three-geospatial-effects @takram/three-atmosphere @takram/three-clouds postprocessing
+```
+
+`three`、`3d-tiles-renderer` 和 Takram 相关包是 EarthScene 的 peer dependency。应用侧需要显式安装，便于你控制版本和打包策略。
+
+## 创建 Viewer
+
+```ts
+import earthscene from 'earthscene'
+
+const viewer = new earthscene.Viewer('viewer', {
+  terrain: {
+    type: 'url',
+    url: 'https://example.com/terrain/'
+  },
+  overlays: [
+    {
+      source: {
+        type: 'xyz',
+        url: 'https://example.com/imagery/{z}/{y}/{x}',
+        levels: 19
+      }
+    }
+  ],
+  camera: {
+    destination: {
+      longitude: 121.4737,
+      latitude: 31.2304,
+      height: 1200
+    },
+    orientation: {
+      pitch: -25
+    }
+  }
+})
+```
+
+## 资源路径
+
+EarthScene 默认从 `/draco/` 加载 **完整** Draco 解码器（同时支持 glTF mesh 和点云）。应用侧需要把 three.js 的 `examples/jsm/libs/draco/` 解码器文件放到对应公开目录。如果你的路径不是 `/draco/`，通过 `dracoDecoderPath` 指定：
+
+```ts
+const viewer = new earthscene.Viewer(container, {
+  dracoDecoderPath: '/assets/draco/'
+})
+```
+
+`/draco/gltf/` 是体积更小的 glTF 专用 decoder，只能解三角网格，**不能**解 Draco 压缩的点云（`.pnts`）。只有确定不加载点云时才改用它。
+
+## 销毁
+
+不再使用 Viewer 时（例如单页应用路由切换、组件卸载），调用 `destroy()` 释放 WebGL 资源、控制器、已加载纹理和事件监听器，避免 GPU 内存泄漏和事件回调残留。
+
+```ts
+// 单页应用 / 框架组件卸载时销毁（推荐时机）
+viewer.destroy()
+```
+
+在 React / Vue 这类框架里，应在组件卸载生命周期里销毁：
+
+```ts
+// React 示例
+useEffect(() => {
+  const viewer = new earthscene.Viewer(container, options)
+  return () => {
+    viewer.destroy()
+  }
+}, [])
+```
+
+::: tip 页面关闭时的兜底
+页面卸载（`beforeunload` / `pagehide`）时浏览器已经在回收标签页，同步的 WebGL 资源释放通常不可靠，**不要把销毁只挂在页面关闭事件上**。优先在组件卸载或路由切换时销毁；如需兜底，可以额外监听 `pagehide`（比 `beforeunload` 更适合做清理）。
+:::

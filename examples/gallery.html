@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN" class="portal-page">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="canonical" href="https://earth.2t.hk/gallery.html" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      data-i18n-attr="content:gallery.meta.description"
+      content="基于 EarthScene 构建的社区优秀案例合集：数字地球、数字孪生、三维地图与行业应用。"
+    />
+    <title data-i18n="gallery.meta.title">EarthScene 社区作品</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./gallery.ts"></script>
+  </head>
+  <body class="portal-page">
+    <main class="portal portal-gallery">
+      <header class="portal-gallery__nav">
+        <nav
+          class="portal-nav"
+          data-i18n-attr="aria-label:portal.nav.aria"
+          aria-label="EarthScene 网站导航"
+        >
+          <a
+            class="portal-brand"
+            href="./index.html"
+            data-i18n-attr="aria-label:portal.nav.homeAria"
+            aria-label="EarthScene 首页"
+          >
+            <span class="portal-brand__mark" aria-hidden="true">E</span>
+            <span>EarthScene</span>
+          </a>
+          <div class="portal-nav__links">
+            <a data-docs-link href="./docs/" data-i18n="portal.nav.docs">文档</a>
+            <a href="./sandcastle.html" data-i18n="portal.nav.examples">示例</a>
+            <span aria-current="page" data-i18n="portal.nav.showcase">社区作品</span>
+            <a href="https://github.com/AliYa-chen/earthscene" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <div data-lang-toggle></div>
+          </div>
+        </nav>
+      </header>
+
+      <section
+        class="portal-gallery__toolbar"
+        data-gallery
+        data-i18n-attr="aria-label:gallery.toolbarAria"
+        aria-label="搜索与筛选社区案例"
+      >
+        <div class="gallery-search">
+          <input
+            type="search"
+            data-gallery-search
+            autocomplete="off"
+            spellcheck="false"
+            data-i18n-attr="placeholder:gallery.searchPlaceholder,aria-label:gallery.searchAria"
+            placeholder="搜索案例标题或描述"
+            aria-label="搜索社区案例"
+          />
+        </div>
+        <div
+          class="gallery-tags"
+          data-gallery-tags
+          role="group"
+          data-i18n-attr="aria-label:gallery.tagsAria"
+          aria-label="按标签筛选"
+        ></div>
+        <p class="gallery-count" data-gallery-count aria-live="polite"></p>
+      </section>
+
+      <section class="portal-gallery__content">
+        <div
+          class="portal-community__empty"
+          data-gallery-empty-all
+          hidden
+          data-i18n-attr="aria-label:portal.community.emptyAria"
+          aria-label="暂无社区案例"
+        >
+          <p data-i18n="portal.community.empty">
+            还没有社区案例，期待你的第一个作品。
+          </p>
+          <p>新项目尚未开放在线提交。</p>
+          <span class="portal-footer__sep" aria-hidden="true">·</span>
+          <a
+            href="https://github.com/NASA-AMMOS/3DTilesRendererJS"
+            target="_blank"
+            rel="noopener noreferrer"
+            >3d-tiles-renderer</a
+          >
+          <span class="portal-footer__sep" aria-hidden="true">·</span>
+          <a
+            href="https://github.com/takram-design-engineering/three-geospatial"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Takram</a
+          >
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+.leva__hint-text {
+  padding: var(--leva-space-sm) 0;
+  color: var(--leva-colors-highlight2);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}

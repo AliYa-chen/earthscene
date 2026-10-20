@@ -1,0 +1,144 @@
+import { WMSTilesOverlay, WMTSTilesOverlay } from '3d-tiles-renderer/plugins'
+import * as THREE from 'three'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
+
+import { ImageryOverlayFactory } from '../tiles/ImageryOverlayFactory'
+
+beforeAll(() => {
+  vi.stubGlobal('location', { href: 'http://localhost/' })
+})
+
+function createFactory() {
+  return new ImageryOverlayFactory({
+    renderer: {} as never,
+    transparentOverlayTexture: new THREE.Texture()
+  })
+}
+
+describe('ImageryOverlayFactory WMS overlays', () => {
+  it('lowercases WMS KVP names in preprocessURL for strict servers', () => {
+    const factory = createFactory()
+    const overlay = factory.createOverlay({
+      type: 'wms',
+      url: 'https://example.test/wms/compose',
+      layer: 'GEOS_IRX',
+      version: '1.3.0',
+      crs: 'EPSG:4326',
+      preprocessURL(url) {
+        const next = new URL(url)
+        next.searchParams.set('datetime', '202607081100')
+        return next.toString()
+      }
+    })
+
+    expect(overlay).not.toBeNull()
+    expect(overlay).toBeInstanceOf(WMSTilesOverlay)
+
+    const processed = overlay?.preprocessURL?.(
+      'https://example.test/wms/compose?SERVICE=WMS&REQUEST=GetMap&VERSION=1.3.0&LAYERS=GEOS_IRX&CRS=EPSG%3A4326&BBOX=112.5,33.75,118.125,39.375&WIDTH=256&HEIGHT=256&FORMAT=image%2Fpng'
+    )
+    expect(processed).toBeDefined()
+
+    const nextUrl = new URL(processed!)
+    expect(nextUrl.searchParams.get('service')).toBe('WMS')
+    expect(nextUrl.searchParams.get('request')).toBe('GetMap')
+    expect(nextUrl.searchParams.get('layers')).toBe('GEOS_IRX')
+    expect(nextUrl.searchParams.get('bbox')).toBe('112.5,33.75,118.125,39.375')
+    expect(nextUrl.searchParams.get('datetime')).toBe('202607081100')
+    expect(nextUrl.searchParams.has('SERVICE')).toBe(false)
+    expect(nextUrl.searchParams.has('REQUEST')).toBe(false)
+  })
+})
+
+describe('ImageryOverlayFactory WMTS overlays', () => {
+  it('preserves REST template placeholders when resolving relative URLs', async () => {
+    const overlay = createFactory().createOverlay({
+      type: 'wmts',
+      url: '/wmts/{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}.jpg',
+      layer: 'night',
+      tileMatrixSet: '500m',
+      projection: 'EPSG:4326'
+    })
+    const source = (overlay as unknown as {
+      imageSource: { init(): Promise<void>; getUrl(x: number, y: number, level: number): string }
+    }).imageSource
+    await source.init()
+    const url = source.getUrl(1, 0, 2)
+    expect(url).toBe('http://localhost/wmts/500m/2/0/1.jpg')
+    expect(url).not.toContain('REQUEST=GetTile')
+  })
+
+  it('creates a WMTSTilesOverlay for tianditu-style wmts source config', () => {
+    const factory = createFactory()
+    const overlay = factory.createOverlay({
+      type: 'wmts',
+      url: 'http://example.test/img_w/wmts',
+      layer: 'img',
+      tileMatrixSet: 'w',
+      style: 'default',
+      format: 'tiles',
+      projection: 'EPSG:3857',
+      levels: 18
+    })
+
+    expect(overlay).not.toBeNull()
+    expect(overlay).toBeInstanceOf(WMTSTilesOverlay)
+  })
+
+  it('converts EPSG:4326 contentBoundingBox from degrees to radians', () => {
+    const factory = createFactory()
+    const overlay = factory.createOverlay({
+      type: 'wmts',
+      url: 'http://example.test/wmts',
+      layer: 'img',
+      tileMatrixSet: 'w',
+      projection: 'EPSG:4326',
+      contentBoundingBox: [-180, -90, 180, 90]
+    })
+
+    const imageSource = (overlay as { imageSource?: { contentBoundingBox?: number[] } }).imageSource
+    expect(imageSource?.contentBoundingBox?.[0]).toBeCloseTo(-Math.PI)
+    expect(imageSource?.contentBoundingBox?.[1]).toBeCloseTo(-Math.PI / 2)
+    expect(imageSource?.contentBoundingBox?.[2]).toBeCloseTo(Math.PI)
+    expect(imageSource?.contentBoundingBox?.[3]).toBeCloseTo(Math.PI / 2)
+  })
+
+  it('converts EPSG:3857 contentBoundingBox from web mercator meters to radians', () => {
+    const factory = createFactory()
+    const halfEarth = 6378137 * Math.PI
+    const overlay = factory.createOverlay({
+      type: 'wmts',
+      url: 'http://example.test/wmts',
+      layer: 'img',
+      tileMatrixSet: 'w',
+      projection: 'EPSG:3857',
+      contentBoundingBox: [-halfEarth, -halfEarth, halfEarth, halfEarth]
+    })
+
+    const imageSource = (overlay as { imageSource?: { contentBoundingBox?: number[] } }).imageSource
+    expect(imageSource?.contentBoundingBox?.[0]).toBeCloseTo(-Math.PI)
+    expect(imageSource?.contentBoundingBox?.[2]).toBeCloseTo(Math.PI)
+  })
+
+  it('passes preprocessURL and dimensions through to the overlay', () => {
+    const factory = createFactory()
+    const preprocessURL = (url: string) => {
+      const next = new URL(url)
+      next.searchParams.set('tk', 'test-token')
+      return next.toString()
+    }
+
+    const overlay = factory.createOverlay({
+      type: 'wmts',
+      url: 'http://example.test/wmts',
+      layer: 'img',
+      tileMatrixSet: 'w',
+      dimensions: { TIME: '2024-01-01' },
+      preprocessURL
+    })
+
+    expect(overlay?.preprocessURL).toBe(preprocessURL)
+    const imageSource = (overlay as { imageSource?: { dimensions?: Record<string, string | number> } }).imageSource
+    expect(imageSource?.dimensions).toEqual({ TIME: '2024-01-01' })
+  })
+})

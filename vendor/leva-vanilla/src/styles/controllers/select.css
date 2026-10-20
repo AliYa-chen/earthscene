@@ -1,0 +1,59 @@
+.leva__input--select {
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  color: black;
+}
+
+.leva__input--select-trigger {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--leva-sizes-rowHeight);
+  background-color: var(--leva-colors-elevation3);
+  border-radius: var(--leva-radii-sm);
+  padding: 0 var(--leva-space-sm);
+  cursor: pointer;
+}
+
+.leva__control--select-parent:hover,
+.leva__control--select-parent:focus-within {
+  box-shadow: none;
+}
+
+.leva__control--select-parent svg {
+  position: absolute;
+  top: 50%;
+  right: var(--leva-space-md);
+  fill: currentcolor;
+  pointer-events: none;
+  transform: scale(0.8) translateY(-50%);
+}
+
+.leva__select-dropdown {
+  position: fixed;
+  font-family: var(--leva-fonts-mono);
+  font-size: var(--leva-fontSizes-root);
+  background: var(--leva-colors-elevation3);
+  border-radius: var(--leva-radii-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 99999;
+
+  scrollbar-width: thin;
+  scrollbar-color: var(--leva-colors-highlight1) transparent;
+}
+
+.leva__select-item {
+  color: var(--leva-colors-highlight2);
+  padding: var(--leva-space-sm);
+  cursor: pointer;
+}
+
+.leva__select-item:hover {
+  color: var(--leva-colors-highlight3);
+}

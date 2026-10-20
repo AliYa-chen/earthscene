@@ -1,0 +1,523 @@
+import * as THREE from 'three'
+import { CAMERA_FRAME, DEFAULT_CAMERA, DEG2RAD } from './constants'
+import { hasExplicitHeight, readLonLat, readLonLatHeight } from './lonlat'
+import type { LonLatHeight, LonLatHeightLike, LonLatLike } from './types/spatial'
+
+/**
+ * 相机飞行动画的缓动函数。
+ *
+ * Camera flight easing function.
+ */
+export type CameraFlightEasingFunction = (time: number) => number
+
+/**
+ * 相机飞行或立即定位的目标位置。
+ *
+ * 传 {@link LonLatLike}（无高度）时保持当前相机高度；传 {@link LonLatHeightLike}
+ * 时使用给定高度。
+ *
+ * Camera destination for flight or an immediate view change.
+ *
+ * A {@link LonLatLike} value (no height) keeps the current camera height; a
+ * {@link LonLatHeightLike} value uses the given height.
+ */
+export type CameraDestination = LonLatLike | LonLatHeightLike
+
+/**
+ * 透视投影参数。仅初始化可配置。
+ *
+ * Perspective projection parameters. Init-only.
+ */
+export interface CameraProjectionOptions {
+  /** 透视相机垂直视场角（度）。Perspective camera vertical field of view in degrees. */
+  fov?: number
+  /** 透视相机近裁剪面（米）。Perspective camera near clipping plane in meters. */
+  near?: number
+  /** 透视相机远裁剪面（米）。Perspective camera far clipping plane in meters. */
+  far?: number
+}
+
+/**
+ * 相机姿态角。
+ *
+ * Camera orientation angles.
+ */
+export interface CameraOrientation {
+  /** 航向角（度）。Heading in degrees. */
+  heading?: number
+  /** 俯仰角（度）。Pitch in degrees. */
+  pitch?: number
+  /** 翻滚角（度）。Roll in degrees. */
+  roll?: number
+}
+
+/**
+ * 相机飞行选项。
+ *
+ * Camera flight options.
+ */
+export interface CameraFlyToOptions {
+  /**
+   * 相机最终位置。传无高度的 {@link LonLatLike} 时保持当前相机高度。
+   *
+   * Final camera position. A {@link LonLatLike} value without height keeps the
+   * current camera height.
+   */
+  destination: CameraDestination
+  /** 相机最终姿态。Final camera orientation. */
+  orientation?: CameraOrientation
+  /** 飞行持续时间（秒）。Flight duration in seconds. */
+  duration?: number
+  /** 飞行最高高度（米），用于形成弧线飞行路径。Maximum flight height in meters, used to form an arced path. */
+  maximumHeight?: number
+  /** 飞行完成时调用。Called when the flight completes. */
+  complete?: () => void
+  /** 飞行被新飞行、立即定位或用户交互取消时调用。Called when the flight is cancelled by a new flight, immediate view change, or user input. */
+  cancel?: () => void
+  /** 控制飞行时间插值的缓动函数。Easing function that controls flight time interpolation. */
+  easingFunction?: CameraFlightEasingFunction
+}
+
+/**
+ * 完整相机视角快照，可用于初始化和恢复视角。
+ *
+ * Complete camera view snapshot, reusable for initialization and view restoration.
+ */
+export interface CameraState {
+  /** 相机经纬高对象。Camera longitude, latitude and height object. */
+  destination: LonLatHeight
+  /** 完整相机姿态。Complete camera orientation. */
+  orientation: Required<CameraOrientation>
+}
+
+/** 立即设置相机视角的选项。Options for setting the camera view immediately. */
+export interface CameraSetViewOptions {
+  /**
+   * 相机位置。传无高度的 {@link LonLatLike} 时保持当前相机高度。
+   *
+   * Camera position. A {@link LonLatLike} value without height keeps the current
+   * camera height.
+   */
+  destination: CameraDestination
+  /** 相机姿态。Camera orientation. */
+  orientation?: CameraOrientation
+}
+
+/**
+ * 相机经纬高计算所需的地球椭球能力。
+ *
+ * Globe ellipsoid capabilities required by camera cartographic calculations.
+ */
+export interface CameraEllipsoid {
+  radius: THREE.Vector3
+  getObjectFrame(
+    lat: number,
+    lon: number,
+    height: number,
+    az: number,
+    el: number,
+    roll: number,
+    target: THREE.Matrix4,
+    frame?: number
+  ): THREE.Matrix4
+  getCartographicFromObjectFrame(
+    matrix: THREE.Matrix4,
+    target: object,
+    frame?: number
+  ): {
+    lat: number
+    lon: number
+    height: number
+    azimuth: number
+    elevation: number
+    roll: number
+  }
+}
+
+/**
+ * 返回当前相机应使用的活动地球椭球。
+ *
+ * Returns the active globe ellipsoid used by camera calculations.
+ */
+export type CameraEllipsoidProvider = () => CameraEllipsoid | null
+
+interface CameraViewState {
+  latitude: number
+  longitude: number
+  height: number
+  heading: number
+  pitch: number
+  roll: number
+}
+
+interface CameraFlight {
+  frameId: number
+  cancel?: () => void
+}
+
+const DEFAULT_FLIGHT_DURATION = 3
+const MIN_FLIGHT_DURATION = 1
+const MAX_FLIGHT_DURATION = 6
+const SCRATCH_CARTOGRAPHIC = {
+  lat: 0,
+  lon: 0,
+  height: 0,
+  azimuth: 0,
+  elevation: 0,
+  roll: 0
+}
+
+/**
+ * 相机控制器，提供 Cesium 风格的视角方法。
+ *
+ * Camera controller with Cesium-style view methods.
+ */
+export class Camera {
+  /**
+   * 底层 Three.js 透视相机。越过这条线后的修改由调用方自负。
+   *
+   * Underlying Three.js perspective camera. Changes past this line are the
+   * caller's responsibility.
+   */
+  readonly raw: THREE.PerspectiveCamera
+
+  private currentFlight: CameraFlight | null = null
+
+  private _allowUnderground = false
+
+  /**
+   * 防穿地开关变化回调；由 Viewer 注入以同步底层控件的离地约束。内部使用。
+   *
+   * Listener invoked when {@link allowUnderground} changes, injected by the Viewer
+   * to sync the underlying controls' ground-clamp constraint. Internal.
+   */
+  onAllowUndergroundChange?: (value: boolean) => void
+
+  constructor(
+    camera: THREE.PerspectiveCamera,
+    private readonly getActiveEllipsoid: CameraEllipsoidProvider = () => null
+  ) {
+    this.raw = camera
+  }
+
+  /**
+   * 是否允许相机穿过地形进入地下，默认 `false`。
+   *
+   * 默认（`false`）时，用户首次手动交互后启用相机离地约束，相机不会穿入地形下方；
+   * 设为 `true` 立即关闭该约束，相机可自由穿入地下；设回 `false` 重新启用。
+   *
+   * Whether the camera can pass through the terrain underground. Defaults to `false`.
+   *
+   * When `false` (default), a minimum-height constraint is enabled after the first user
+   * interaction so the camera won't clip below the terrain. Set to `true` to disable the
+   * constraint immediately (camera can move underground); set back to `false` to re-enable.
+   */
+  get allowUnderground() {
+    return this._allowUnderground
+  }
+
+  set allowUnderground(value: boolean) {
+    if (this._allowUnderground === value) return
+    this._allowUnderground = value
+    this.onAllowUndergroundChange?.(value)
+  }
+
+  /**
+   * 平滑飞行到目标位置。
+   *
+   * 新的飞行会取消尚未完成的旧飞行。`duration` 使用秒作为单位；
+   * 未传入时会根据当前视角和目标视角估算一个飞行时间。
+   *
+   * Smoothly flies the camera to a destination.
+   *
+   * A new flight cancels any unfinished previous flight. `duration` is in
+   * seconds. When omitted, an estimated duration is computed from the current
+   * and destination views.
+   */
+  flyTo(options: CameraFlyToOptions) {
+    const ellipsoid = this.getEllipsoid()
+    if (!ellipsoid) return
+
+    const start = this.getCurrentView(ellipsoid)
+    const target = this.resolveFlyToTarget(options, start)
+    const duration = options.duration ?? this.computeFlightDuration(start, target, ellipsoid)
+
+    this.cancelFlight()
+
+    if (duration <= 0) {
+      this.applyView(target)
+      options.complete?.()
+      return
+    }
+
+    const startedAt = performance.now()
+    const durationMs = duration * 1000
+    const easingFunction = options.easingFunction ?? easeInOutCubic
+    const maximumHeight = options.maximumHeight ?? this.computeMaximumHeight(start, target, ellipsoid)
+
+    const updateFlight = (time: number) => {
+      const rawTime = clamp((time - startedAt) / durationMs, 0, 1)
+      const easedTime = clamp(easingFunction(rawTime), 0, 1)
+
+      this.applyView({
+        latitude: lerp(start.latitude, target.latitude, easedTime),
+        longitude: normalizeLongitude(lerp(start.longitude, target.longitude, easedTime)),
+        height: interpolateHeight(start.height, target.height, maximumHeight, easedTime),
+        heading: interpolateAngle(start.heading, target.heading, easedTime),
+        pitch: interpolateAngle(start.pitch, target.pitch, easedTime),
+        roll: interpolateAngle(start.roll, target.roll, easedTime)
+      })
+
+      if (rawTime < 1) {
+        if (this.currentFlight) {
+          this.currentFlight.frameId = requestAnimationFrame(updateFlight)
+        }
+        return
+      }
+
+      this.currentFlight = null
+      this.applyView({
+        ...target,
+        longitude: normalizeLongitude(target.longitude)
+      })
+      options.complete?.()
+    }
+
+    this.currentFlight = {
+      frameId: requestAnimationFrame(updateFlight),
+      cancel: options.cancel
+    }
+  }
+
+  /**
+   * 取消当前相机飞行。
+   *
+   * Cancels the current camera flight.
+   */
+  cancelFlight() {
+    const flight = this.currentFlight
+    if (!flight) return
+
+    cancelAnimationFrame(flight.frameId)
+    this.currentFlight = null
+    flight.cancel?.()
+  }
+
+  /**
+   * 立即设置相机视角。
+   *
+   * Sets the camera view immediately.
+   */
+  setView(options: CameraSetViewOptions) {
+    this.cancelFlight()
+    const destination = this.resolveDestination(options.destination)
+    this.applyView({
+      latitude: destination.latitude,
+      longitude: destination.longitude,
+      height: destination.height,
+      heading: options.orientation?.heading ?? DEFAULT_CAMERA.orientation.heading,
+      pitch: options.orientation?.pitch ?? DEFAULT_CAMERA.orientation.pitch,
+      roll: options.orientation?.roll ?? DEFAULT_CAMERA.orientation.roll
+    })
+  }
+
+  /**
+   * 获取当前相机高度。
+   *
+   * 返回相机相对当前地球椭球的高度，单位为米；当相机尚未绑定地球渲染器时返回 `null`。
+   *
+   * Gets the current camera height.
+   *
+   * Returns the camera height above the current globe ellipsoid in meters, or
+   * `null` when the camera is not yet bound to a globe renderer.
+   */
+  getCurrentHeight() {
+    const ellipsoid = this.getEllipsoid()
+    if (!ellipsoid) return null
+
+    return this.getCurrentView(ellipsoid).height
+  }
+
+  /**
+   * 获取当前相机视角参数。
+   *
+   * 返回值可直接传给 {@link Camera.setView}。`destination` 始终带高度，也可作为
+   * Viewer 初始化 `camera.destination` / `camera.orientation` 使用。
+   *
+   * Gets the current camera view parameters.
+   *
+   * The returned value can be passed directly to {@link Camera.setView}.
+   * `destination` always includes height, so it can also be reused as Viewer
+   * `camera.destination` / `camera.orientation`.
+   */
+  getState(): CameraState {
+    const ellipsoid = this.getEllipsoid()
+    if (!ellipsoid) {
+      return {
+        destination: { ...DEFAULT_CAMERA.destination },
+        orientation: { ...DEFAULT_CAMERA.orientation }
+      }
+    }
+
+    const view = this.getCurrentView(ellipsoid)
+    return {
+      destination: {
+        longitude: view.longitude,
+        latitude: view.latitude,
+        height: view.height
+      },
+      orientation: {
+        heading: view.heading,
+        pitch: view.pitch,
+        roll: view.roll
+      }
+    }
+  }
+
+  private applyView(options: CameraViewState) {
+    const ellipsoid = this.getEllipsoid()
+    if (!ellipsoid) return
+
+    ellipsoid.getObjectFrame(
+      options.latitude * DEG2RAD,
+      options.longitude * DEG2RAD,
+      options.height,
+      options.heading * DEG2RAD,
+      options.pitch * DEG2RAD,
+      options.roll * DEG2RAD,
+      this.raw.matrix,
+      CAMERA_FRAME
+    )
+    this.raw.matrix.decompose(this.raw.position, this.raw.quaternion, this.raw.scale)
+    this.raw.updateMatrixWorld(true)
+  }
+
+  private getEllipsoid() {
+    return this.getActiveEllipsoid()
+  }
+
+  /**
+   * 是否正在执行 flyTo 飞行动画。
+   *
+   * Whether a flyTo flight animation is currently in progress.
+   */
+  get isFlying(): boolean {
+    return this.currentFlight !== null
+  }
+
+  /**
+   * 当前相机俯仰角（度，Cesium 约定：0=地平线，-90=朝下，+90=朝上）。未绑定地球时返回默认值。
+   * 复用 {@link getCurrentView} 的底层换算但不分配返回对象，便于每帧调用。
+   *
+   * Current camera pitch in degrees (Cesium convention: 0=horizon, -90=down, +90=up). Returns the
+   * default when not bound to a globe. Reuses the same conversion as {@link getCurrentView} but
+   * allocates no return object, so it is cheap to call every frame.
+   */
+  getPitch(): number {
+    const ellipsoid = this.getEllipsoid()
+    if (!ellipsoid) return DEFAULT_CAMERA.orientation.pitch
+    this.raw.updateMatrix()
+    const cartographic = ellipsoid.getCartographicFromObjectFrame(
+      this.raw.matrix,
+      SCRATCH_CARTOGRAPHIC,
+      CAMERA_FRAME
+    )
+    return cartographic.elevation / DEG2RAD
+  }
+
+  private getCurrentView(ellipsoid: CameraEllipsoid): CameraViewState {
+    this.raw.updateMatrix()
+    const cartographic = ellipsoid.getCartographicFromObjectFrame(this.raw.matrix, SCRATCH_CARTOGRAPHIC, CAMERA_FRAME)
+
+    return {
+      latitude: cartographic.lat / DEG2RAD,
+      longitude: cartographic.lon / DEG2RAD,
+      height: cartographic.height,
+      heading: cartographic.azimuth / DEG2RAD,
+      pitch: cartographic.elevation / DEG2RAD,
+      roll: cartographic.roll / DEG2RAD
+    }
+  }
+  private resolveFlyToTarget(options: CameraFlyToOptions, start: CameraViewState): CameraViewState {
+    const destination = this.resolveDestination(options.destination, start.height)
+    const { orientation } = options
+    return {
+      latitude: destination.latitude,
+      longitude: start.longitude + shortestAngleDelta(start.longitude, destination.longitude),
+      height: destination.height,
+      heading: orientation?.heading ?? DEFAULT_CAMERA.orientation.heading,
+      pitch: orientation?.pitch ?? DEFAULT_CAMERA.orientation.pitch,
+      roll: orientation?.roll ?? DEFAULT_CAMERA.orientation.roll
+    }
+  }
+
+  private resolveDestination(destination: CameraDestination, currentHeight?: number) {
+    const { longitude, latitude } = readLonLat(destination)
+    const height = hasExplicitHeight(destination)
+      ? readLonLatHeight(destination).height
+      : currentHeight ?? this.getCurrentHeight() ?? DEFAULT_CAMERA.destination.height
+    return { longitude, latitude, height }
+  }
+
+  private computeFlightDuration(start: CameraViewState, target: CameraViewState, ellipsoid: CameraEllipsoid) {
+    const radius = Math.max(ellipsoid.radius.x, ellipsoid.radius.y, ellipsoid.radius.z)
+    const angularDistance = computeAngularDistance(start, target)
+    const surfaceDistance = angularDistance * radius
+    const heightDistance = Math.abs(target.height - start.height)
+    const distanceRatio = (surfaceDistance + heightDistance) / radius
+
+    return clamp(DEFAULT_FLIGHT_DURATION * Math.sqrt(distanceRatio), MIN_FLIGHT_DURATION, MAX_FLIGHT_DURATION)
+  }
+
+  private computeMaximumHeight(start: CameraViewState, target: CameraViewState, ellipsoid: CameraEllipsoid) {
+    const radius = Math.max(ellipsoid.radius.x, ellipsoid.radius.y, ellipsoid.radius.z)
+    const surfaceDistance = computeAngularDistance(start, target) * radius
+    const baseHeight = Math.max(start.height, target.height)
+
+    if (surfaceDistance <= 1) return baseHeight
+
+    return baseHeight + clamp(surfaceDistance * 0.18, 0, radius * 0.35)
+  }
+}
+
+function easeInOutCubic(time: number) {
+  return time < 0.5 ? 4 * time * time * time : 1 - Math.pow(-2 * time + 2, 3) / 2
+}
+
+function interpolateHeight(start: number, end: number, maximumHeight: number, time: number) {
+  if (maximumHeight <= Math.max(start, end)) return lerp(start, end, time)
+
+  return lerp(lerp(start, maximumHeight, time), lerp(maximumHeight, end, time), time)
+}
+
+function interpolateAngle(start: number, end: number, time: number) {
+  return start + shortestAngleDelta(start, end) * time
+}
+
+function computeAngularDistance(start: Pick<CameraViewState, 'latitude' | 'longitude'>, end: Pick<CameraViewState, 'latitude' | 'longitude'>) {
+  const startLatitude = start.latitude * DEG2RAD
+  const endLatitude = end.latitude * DEG2RAD
+  const latitudeDelta = (end.latitude - start.latitude) * DEG2RAD
+  const longitudeDelta = shortestAngleDelta(start.longitude, end.longitude) * DEG2RAD
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(startLatitude) * Math.cos(endLatitude) * Math.sin(longitudeDelta / 2) ** 2
+
+  return 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(Math.max(0, 1 - haversine)))
+}
+
+function shortestAngleDelta(start: number, end: number) {
+  return normalizeLongitude(end - start)
+}
+
+function normalizeLongitude(longitude: number) {
+  return ((((longitude + 180) % 360) + 360) % 360) - 180
+}
+
+function lerp(start: number, end: number, time: number) {
+  return start + (end - start) * time
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
