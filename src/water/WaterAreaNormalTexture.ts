@@ -9,11 +9,14 @@ import {
   type Texture,
   UnsignedByteType
 } from 'three'
+import { getEarthSceneAssetUrl } from '../config'
 
-export const WATER_AREA_NORMAL_MAP_URLS = [
-  new URL('./assets/Water_1_M_Normal.jpg', import.meta.url).href,
-  new URL('./assets/Water_2_M_Normal.jpg', import.meta.url).href
-] as const
+function getWaterAreaNormalMapUrls(): readonly [string, string] {
+  return [
+    getEarthSceneAssetUrl('waterNormal1'),
+    getEarthSceneAssetUrl('waterNormal2')
+  ]
+}
 
 export type WaterAreaNormalTextures = readonly [Texture, Texture]
 
@@ -112,13 +115,14 @@ function configureWaterAreaNormalTexture(
 export function createWaterAreaNormalTextures(
   loader: WaterAreaTextureLoader = new TextureLoader()
 ): WaterAreaNormalTextures {
+  const [normalMap1, normalMap2] = getWaterAreaNormalMapUrls()
   return [
     configureWaterAreaNormalTexture(
-      loader.load(WATER_AREA_NORMAL_MAP_URLS[0]),
+      loader.load(normalMap1),
       0
     ),
     configureWaterAreaNormalTexture(
-      loader.load(WATER_AREA_NORMAL_MAP_URLS[1]),
+      loader.load(normalMap2),
       1
     )
   ]

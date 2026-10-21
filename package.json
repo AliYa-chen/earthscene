@@ -1,7 +1,7 @@
 {
   "name": "earthscene",
-  "version": "0.1.1",
-  "description": "TypeScript 3D Earth engine and modular Cesium extensions for volumetric clouds and geospatial visualization.",
+  "version": "0.1.2",
+  "description": "A modular 3D Earth effects library and Cesium extension package for clouds, atmosphere, water, and geospatial visualization.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://earth.2t.hk",
@@ -32,6 +32,8 @@
       "types": "./dist/assets.d.ts",
       "import": "./dist/assets.js"
     },
+    "./assets/manifest.json": "./dist/assets/earthscene/manifest.json",
+    "./assets/*": "./dist/assets/earthscene/*",
     "./cesium": {
       "types": "./dist/cesium/index.d.ts",
       "import": "./dist/index.js"
@@ -162,6 +164,8 @@
     "3d",
     "globe",
     "gis",
+    "atmosphere",
+    "water",
     "volumetric-clouds",
     "typescript"
   ],

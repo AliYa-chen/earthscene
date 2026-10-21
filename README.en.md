@@ -4,9 +4,9 @@
 
 English | [中文](./README.md)
 
-EarthScene is a new, independent 3D Earth project. It retains the complete homepage, documentation, Sandcastle, examples and feature organization while moving suitable capabilities to **CesiumJS** incrementally. Rendering effects that Cesium does not provide directly are exposed as libraries or plugins, with **Three.js** available where useful.
+EarthScene is an npm effects and plugin library for web-based 3D Earth applications. It aims to add effects to an application with a small amount of configuration. The package supplies implemented effects and their runtime assets; the application passes its own Viewer and business data, then selects the options it needs. Viewer lifecycle, terrain and imagery, service credentials, and business data remain application-owned.
 
-Versioning starts at `0.1.0`. **The default npm entry, `earthscene`, provides Cesium extensions and exports the `ES` namespace by default.** The complete Three.js engine is retained under `earthscene/engine`; the existing homepage and examples still use it and have not been fully migrated to Cesium. `earthscene/cesium` exposes the same extension APIs as the default entry. See [project status](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/project-status.md).
+The default npm entry, `earthscene`, provides extensions for native CesiumJS Viewers and exports the `ES` namespace by default. `earthscene/cesium` exposes the same APIs. The complete Three.js engine remains available through the optional `earthscene/engine` entry and is still used by the existing homepage and examples. These entries maintain separate capabilities; an effect in the complete engine is not necessarily implemented for Cesium. See [project status](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/project-status.md).
 
 ## Install in your project
 
@@ -43,6 +43,8 @@ const viewer = new earthscene.Viewer('viewer', options)
 ```
 
 Peers are optional so one entry does not automatically install the other renderer. The last two utilities are bundled at runtime but are referenced by full-engine declarations. They are not needed for the Cesium entry.
+
+EarthScene's built-in textures, Draco decoder, and Basis transcoder ship with the npm package and load by default. The application build resolves these assets; there is no need to copy static files from the examples. The machine-readable inventory is available at `earthscene/assets/manifest.json`, and each listed file can be imported from `earthscene/assets/<fileName>`. The complete engine still supports `baseUrl` and `dracoDecoderPath` overrides for self-hosted assets.
 
 ### Add water to the complete engine
 
@@ -101,16 +103,17 @@ clouds.destroy() // Disposes of this extension only.
 
 Alternatively, use `import ES from 'earthscene'` and `new ES.Clouds(nativeViewer)`. For shared plugin lifecycle management, use `new ESPluginHost(nativeViewer)`; it manages plugins without creating or destroying the native viewer.
 
-The checked CesiumJS version is `1.146.0`. This entry does not import Three.js or replace terrain, imagery, camera, or clock settings. Applications own Cesium asset deployment and scene lifecycle. See the [extension guide](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/cesium-migration.md).
+The checked CesiumJS version is `1.146.0`. Extensions accept a `Cesium.Viewer` already created by the application. They do not create a Viewer or take ownership of terrain, imagery, camera, clock, or business data. Applications remain responsible for Cesium's upstream asset deployment and scene lifecycle. See the [extension guide](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/cesium-migration.md) for integration details and effect limitations.
 
 The package name is `earthscene`, with `0.1.0` as its first public version. Maintainers run `pnpm release:check` before publishing; `pnpm pack --pack-destination artifacts` produces a local package for integration testing.
 
-### Retained project structure
+### Capabilities and integration boundaries
 
 - The default npm entry, `earthscene`, and `earthscene/cesium` both map to `src/cesium/index.ts` and expose extensions for native Cesium scenes.
 - `src/index.ts` retains the complete Three.js engine's Viewer and domain APIs, published through `earthscene/engine`; source examples still import from `../src`.
 - `earthscene/engine/water` optionally provides `WaterArea` for the complete engine's WebGL path. The default Cesium entry keeps its existing APIs.
-- The default renderer remains Three.js for now. Assess Cesium support from its implementation and verification results, not from the existing API surface.
+- The product provides composable effect implementations and their runtime assets as npm modules; applications provide the host Viewer, business data, and service configuration.
+- The Cesium extension entry and complete Three.js engine are separate implementation paths. Assess Cesium support from its implementation and verification results, not from the existing engine API surface.
 - The project is maintained independently at `AliYa-chen/earthscene`, with `https://earth.2t.hk` as its website. The npm package uses the same `earthscene` name; obsolete deployment and CDN scripts have been removed.
 - Some examples still use external images, models and map services as data sources.
 

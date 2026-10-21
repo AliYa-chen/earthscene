@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { resolve, dirname } from 'node:path'
 
@@ -32,4 +32,20 @@ assert.match(waterCode, /createObjectURL/, 'WaterArea must contain an inline bro
 assert.doesNotMatch(waterCode, /assets\/worker-[A-Za-z0-9_-]+\.js/)
 assert.doesNotMatch(waterCode, /workerpool|protomaps-leaflet/)
 await readFile(resolve(root, 'third_party/licenses/upstream-MIT.txt'), 'utf8')
+await readFile(resolve(root, 'third_party/licenses/three-runtime-assets-NOTICE.md'), 'utf8')
+const assetManifest = JSON.parse(await readFile(resolve(root, 'dist/assets/earthscene/manifest.json'), 'utf8'))
+const { earthsceneAssetUrls, earthsceneAssetFileNames } = await import('../dist/assets.js')
+const assetDeclarations = await readFile(resolve(root, 'dist/assets.d.ts'), 'utf8')
+assert.equal(assetManifest.name, pkg.name)
+assert.deepEqual(Object.keys(assetManifest.assets), Object.keys(earthsceneAssetFileNames))
+for (const assetUrl of Object.values(earthsceneAssetUrls)) {
+  assert.match(assetUrl, /^data:[^,]+;base64,/, 'Built-in runtime assets must be self-contained by default.')
+}
+assert.doesNotMatch(assetDeclarations, /reference path=.*src\//, 'Published asset declarations must not reference repository sources.')
+for (const asset of Object.values(assetManifest.assets)) {
+  const { fileName } = asset
+  assert((await stat(resolve(root, 'dist/assets/earthscene', fileName))).size > 0, `Missing package asset: ${fileName}`)
+}
+assert.equal(pkg.exports['./assets/manifest.json'], './dist/assets/earthscene/manifest.json')
+assert.equal(pkg.exports['./assets/*'], './dist/assets/earthscene/*')
 console.log('Cesium plugin entry, optional WaterArea entry/worker, types, renderer separation, and license checks passed.')

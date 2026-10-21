@@ -9,16 +9,14 @@ export interface EarthSceneConfig {
   /**
    * EarthScene 静态资源父级目录。
    *
-   * 现代打包器默认会自动打包 EarthScene 内置资源。设置后，内置云、STBN 和星空资源会改从该目录加载
-   * `local_weather.png`、`turbulence.png`、`shape.bin`、`shape_detail.bin`、`stbn.bin` 和 `stars.bin`。
-   * 留空时使用 EarthScene 包内置资源。
+   * 默认资源已随 npm 包内联，消费项目无需部署静态目录。设置后，所有内置纹理和 Draco/Basis 解码资源改从
+   * 此目录加载，文件名见 `earthsceneAssetFileNames`。留空时使用包内置资源。
    *
    * Parent directory for EarthScene static assets.
    *
-   * Modern bundlers automatically bundle EarthScene built-in assets by default. When set, built-in cloud,
-   * STBN, and star field assets are loaded from this directory:
-   * `local_weather.png`, `turbulence.png`, `shape.bin`, `shape_detail.bin`, `stbn.bin`, and `stars.bin`.
-   * Leave it empty to use EarthScene packaged assets.
+   * Built-in assets are inlined into the npm package by default, so consumers do not need to deploy a static directory.
+   * When set, all built-in textures and Draco/Basis decoder resources are loaded from this directory; see
+   * `earthsceneAssetFileNames` for the relative file names. Leave it empty to use packaged assets.
    */
   baseUrl: string
 }

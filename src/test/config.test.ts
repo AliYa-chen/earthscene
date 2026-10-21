@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { getEarthSceneAssetUrl, earthsceneConfig } from '../config'
-import { earthsceneAssetUrls } from '../assets'
+import { earthsceneAssetFileNames, earthsceneAssetUrls } from '../assets'
 
 describe('getEarthSceneAssetUrl', () => {
   afterEach(() => {
@@ -12,6 +12,9 @@ describe('getEarthSceneAssetUrl', () => {
     earthsceneConfig.baseUrl = '   '
 
     expect(getEarthSceneAssetUrl('stars')).toBe(earthsceneAssetUrls.stars)
+    expect(getEarthSceneAssetUrl('dracoWasm')).toMatch(/^data:/)
+    expect(getEarthSceneAssetUrl('basisWasm')).toMatch(/^data:/)
+    expect(getEarthSceneAssetUrl('waterNormal1')).toMatch(/^data:/)
   })
 
   it('resolves the asset filename under the configured baseUrl', () => {
@@ -24,5 +27,15 @@ describe('getEarthSceneAssetUrl', () => {
     earthsceneConfig.baseUrl = '/earthscene-assets/'
 
     expect(getEarthSceneAssetUrl('shapeDetail')).toBe('/earthscene-assets/shape_detail.bin')
+  })
+
+  it('includes every built-in file in the public resource map', () => {
+    expect(Object.keys(earthsceneAssetUrls)).toEqual(Object.keys(earthsceneAssetFileNames))
+    expect(earthsceneAssetFileNames).toMatchObject({
+      dracoWasm: 'draco/draco_decoder.wasm',
+      basisWasm: 'basis/basis_transcoder.wasm',
+      waterNormal1: 'water/Water_1_M_Normal.jpg',
+      waterNormal2: 'water/Water_2_M_Normal.jpg'
+    })
   })
 })

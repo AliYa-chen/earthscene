@@ -340,8 +340,8 @@ const viewer = new earthscene.Viewer(container, {
   // —— 渲染循环
   useDefaultRenderLoop: true,  // 是否自动启动渲染循环，默认 true；接外部循环时设 false 并手动 render()
 
-  // —— Draco 解码器路径，默认 '/draco/'（完整 decoder，支持 mesh 与点云）
-  dracoDecoderPath: '/draco/',
+  // —— 可选覆盖 Draco 解码器目录；默认使用包内完整 decoder（支持 mesh 与点云）
+  dracoDecoderPath: '/custom/draco/',
 
   // —— 内置控件
   widgets: {

@@ -6,12 +6,18 @@ import type { AtmosphereRuntimeState } from '../rendering/AtmosphereRuntimeState
 import type { WebGPUPostProcessingGraph } from '../rendering/WebGPUPostProcessingManager'
 import type { EarthSceneWebGPURenderer } from '../rendering/RendererAdapter'
 
-const { atmosphereTextureLoaderInstances } = vi.hoisted(() => ({
+const { atmosphereTextureLoaderInstances, stbnTexture } = vi.hoisted(() => ({
   atmosphereTextureLoaderInstances: [] as Array<{
     loadBuffer: ReturnType<typeof vi.fn>
     dispose: ReturnType<typeof vi.fn>
     applyBuffer?: (buffer: ArrayBuffer) => void
-  }>
+  }>,
+  stbnTexture: { url: 'https://media.githubusercontent.com/upstream/stbn.bin' }
+}))
+
+vi.mock('@takram/three-geospatial/webgpu', () => ({ stbnTexture }))
+vi.mock('../config', () => ({
+  getEarthSceneAssetUrl: (assetName: string) => `package-asset://${assetName}`
 }))
 
 vi.mock('three/tsl', () => {
@@ -257,6 +263,18 @@ function createAtmosphereState(overrides: Partial<AtmosphereRuntimeState> = {}):
 describe('WebGPUAtmosphereManager', () => {
   beforeEach(() => {
     atmosphereTextureLoaderInstances.length = 0
+  })
+
+  it('uses the package STBN asset for the upstream shared WebGPU atmosphere node', () => {
+    const renderer = {
+      library: { addLight: vi.fn() },
+      render: vi.fn()
+    } as unknown as EarthSceneWebGPURenderer
+
+    createManager(renderer)
+
+    expect(stbnTexture.url).toBe('package-asset://stbn')
+    expect(stbnTexture.url).not.toContain('githubusercontent.com')
   })
 
   it('writes the world-to-ECEF matrix onto the atmosphere context', async () => {

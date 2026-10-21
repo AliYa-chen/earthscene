@@ -5,7 +5,7 @@ description: Application guidance for EarthScene's default Cesium extensions and
 
 # EarthScene 应用开发与迁移参考
 
-> EarthScene 的 npm 默认入口 `earthscene` 提供 Cesium 扩展，默认导出为 `ES` 命名空间。完整 Three.js 引擎通过 `earthscene/engine` 单独发布，源码仍为 `src/index.ts`；首页、Sandcastle 和现有示例继续使用该实现，源码示例的 `../src` 不等同于 npm 默认入口。`pnpm dev` 使用 `scripts/dev.mjs`。
+> EarthScene 是面向 Web 三维地球应用的 npm 效果与插件库：包提供已实现的效果和运行资源，业务应用传入已有 Viewer、自有业务数据并选择配置。npm 默认入口 `earthscene` 提供原生 Cesium 扩展，默认导出 `ES` 命名空间。完整 Three.js 引擎通过 `earthscene/engine` 单独发布，源码仍为 `src/index.ts`；首页、Sandcastle 和现有示例继续使用该实现，源码示例的 `../src` 不等同于 npm 默认入口。`pnpm dev` 使用 `scripts/dev.mjs`。
 >
 > `earthscene` 与 `earthscene/cesium` 均来自 `src/cesium/index.ts`，接入原生 Cesium API；逐项迁移适合的能力，其他效果作为方法库或插件扩展。尚未全量迁移，不能将下文完整引擎 API 自动视为 Cesium 功能。以 `docs/guide/project-status.md` 与各模块实现为准。
 >
@@ -26,6 +26,8 @@ clouds.destroy()
 默认入口及 Cesium 子入口的扩展类统一使用 `ES` 前缀，不导出 `Viewer`。`import ES from 'earthscene'` 可写成 `new ES.Clouds(nativeViewer)`；需要统一管理多个插件时，使用 `new ESPluginHost(nativeViewer)` 与 `host.use(esClouds(options))`。插件管理器仅附着到已有原生 Viewer，`host.destroy()` 只释放插件，原生 Viewer 的创建和销毁仍由应用负责。完整引擎的 `new earthscene.Viewer(...)` 必须从 `earthscene/engine` 导入，不用于 Cesium 接入示例。
 
 Cesium 扩展入口已按 `1.146.0` 做类型与包入口检查；浏览器视觉效果需单独验证。插件只释放自身资源；使用方必须在销毁原生 Viewer 前显式销毁手动安装的插件。完整说明见 `docs/guide/cesium-migration.md`。
+
+集成时保持宿主边界：应用创建和销毁原生 Cesium Viewer，提供地图服务、业务数据与凭据；EarthScene 插件实现所公开的效果并释放自身资源。EarthScene 的纹理、Draco 解码器、Basis 转码器和水体 Worker 等运行资源由 npm 包提供，消费项目无需从 `examples/` 复制库资源。Cesium 上游的 `Assets`、`Workers`、`Widgets` 和 `ThirdParty` 目录仍按 Cesium 要求由应用部署。完整引擎的资源路径覆盖选项见 `docs/guide/getting-started.md`。
 
 示例令牌优先级为浏览器 `earthscene:cesium-ion-token` 覆盖值，再回退 `.env.local` 的 `VITE_CESIUM_ION_TOKEN`。不将真实令牌写入库源码、日志或文档；这项默认值仅用于示例。
 
@@ -163,7 +165,7 @@ viewer.destroy()
 
 ## 产出代码的规范
 
-1. **完整可运行**：包含 import、容器准备、Viewer 创建。不要只给"核心片段"让用户自己拼。
+1. **接入代码可直接使用**：已有 Viewer 时只展示对应 import、插件安装、配置和销毁，不创建第二个场景。用户从空页面开始时，再补齐容器与原生 Viewer 初始化。
 2. **文档与 skill reference 使用占位 URL**（`https://example.com/...`）；可运行示例中的真实服务地址见 `examples/` 源码与环境变量配置。
 3. **配置用领域分组结构**：`scene.atmosphere.lighting.mode` 而不是拍平的 `atmosphereLightingMode`。初始化配置和运行时入口同构（路径一致）。
 4. **代码后跟简短中文说明**：解释关键参数为什么这么取值、有什么副作用，不展开成长篇。

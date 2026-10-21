@@ -18,6 +18,7 @@ import {
   getSunDirectionECEF
 } from '@takram/three-atmosphere'
 import { Ellipsoid } from '@takram/three-geospatial'
+import { stbnTexture } from '@takram/three-geospatial/webgpu'
 
 import type { AtmosphereRuntimeState, CloudRuntimeState } from './AtmosphereRuntimeState'
 import { getEarthSceneAssetUrl } from '../config'
@@ -94,6 +95,9 @@ export class WebGPUAtmosphereManager {
     private readonly renderer: EarthSceneWebGPURenderer,
     private readonly camera: THREE.PerspectiveCamera
   ) {
+    // 上游散射图节点共享 STBN 单例；所有 Viewer 使用相同的包内资产路径。
+    // The upstream scattering node shares one STBN singleton; all Viewers use the same packaged asset URL.
+    stbnTexture.url = getEarthSceneAssetUrl('stbn')
     this.registerAtmosphereLightNode()
 
     this.atmosphereContext.camera = camera
