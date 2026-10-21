@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
 import { TilesRenderer } from '3d-tiles-renderer'
 import { CesiumIonAuthPlugin } from '3d-tiles-renderer/core/plugins'
 import {
@@ -62,6 +63,7 @@ export interface TilesetManagerOptions {
   renderer: EarthSceneRenderer
   useWebGPUCompatibleSurfaceOverlay?: boolean
   dracoLoader: DRACOLoader
+  ktx2Loader: KTX2Loader
   transparentOverlayTexture: THREE.Texture
   terrain?: TerrainOptions
   surfaceMaterialMode: ResolvedSurfaceMaterialMode
@@ -480,6 +482,7 @@ export class TilesetManager {
   private registerGltfExtensionsPlugin(tileset: TilesRenderer) {
     tileset.registerPlugin(new GLTFExtensionsPlugin({
       dracoLoader: this.options.dracoLoader,
+      ktxLoader: this.options.ktx2Loader,
       plugins: [createMaterialsUnlitCompatibilityPlugin],
       autoDispose: false
     }))

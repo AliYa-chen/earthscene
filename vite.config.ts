@@ -1,32 +1,37 @@
 import { defineConfig } from 'vite'
 import type { Plugin } from 'vite'
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname, resolve } from 'node:path'
 import {
   isBundledExternalModule,
   isPeerDependencyExternal
 } from './src/build/peerDependencyExternal'
 
-const earthsceneAssetUrlMarker = '__EARTHSCENE_ASSET_URL__/'
-
-function preserveEarthSceneAssetUrls() {
+/**
+ * 将必需运行资源内联，避免消费端预构建移动 import.meta.url 后丢失相对地址。
+ * Inline required runtime assets so dependency prebundling cannot invalidate relative asset URLs.
+ */
+function inlineRuntimeAssets(): Plugin {
+  const require = createRequire(import.meta.url)
   return {
-    name: 'earthscene-preserve-asset-urls',
-    enforce: 'pre' as const,
-    transform(code: string, id: string) {
-      if (!id.replace(/\\/g, '/').endsWith('/src/assets.ts')) return null
-
-      return {
-        code: code.replace(/new URL\('\.\/assets\/earthscene\//g, `new URL(/* @vite-ignore */ '${earthsceneAssetUrlMarker}`),
-        map: null
-      }
+    name: 'earthscene-inline-runtime-assets',
+    enforce: 'pre',
+    resolveId(id, importer) {
+      if (!id.endsWith('?inline')) return null
+      const specifier = id.slice(0, -'?inline'.length)
+      const path = specifier.startsWith('.')
+        ? resolve(dirname(importer?.split('?')[0] ?? ''), specifier)
+        : require.resolve(specifier)
+      return `${path}?inline-runtime`
     },
-    generateBundle(_options: unknown, bundle: Record<string, { type: string; code?: string }>) {
-      for (const file of Object.values(bundle)) {
-        if (file.type === 'chunk' && file.code) {
-          file.code = file.code
-            .replace(/\/\*\s*@vite-ignore\s*\*\/\s*/g, '')
-            .replaceAll(earthsceneAssetUrlMarker, './assets/earthscene/')
-        }
-      }
+    load(id) {
+      if (!id.endsWith('?inline-runtime')) return null
+      const path = id.slice(0, -'?inline-runtime'.length)
+      const extension = path.slice(path.lastIndexOf('.') + 1)
+      const contentType = ({ png: 'image/png', jpg: 'image/jpeg', js: 'text/javascript' } as Record<string, string>)[extension] ?? 'application/octet-stream'
+      const url = `data:${contentType};base64,${readFileSync(path).toString('base64')}`
+      return `export default ${JSON.stringify(url)}`
     }
   }
 }
@@ -41,6 +46,7 @@ function assertPeerDependenciesExternal(): Plugin {
         if (output.type !== 'chunk') continue
 
         for (const moduleId of Object.keys(output.modules)) {
+          if (moduleId.endsWith('?inline-runtime')) continue
           if (isBundledExternalModule(moduleId)) {
             bundledPeerModules.add(moduleId)
           }
@@ -58,10 +64,7 @@ function assertPeerDependenciesExternal(): Plugin {
 
 export default defineConfig({
   base: './',
-  plugins: [
-    preserveEarthSceneAssetUrls(),
-    assertPeerDependenciesExternal()
-  ],
+  plugins: [inlineRuntimeAssets(), assertPeerDependenciesExternal()],
   assetsInclude: ['**/*.bin'],
   optimizeDeps: {
     include: ['@mapbox/vector-tile', 'pbf']
@@ -80,7 +83,7 @@ export default defineConfig({
     },
     sourcemap: true,
     rollupOptions: {
-      external: isPeerDependencyExternal
+      external: (id) => !id.endsWith('?inline') && isPeerDependencyExternal(id)
     }
   }
 })

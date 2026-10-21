@@ -9,6 +9,8 @@ export const PACKAGE_EXPORTS = {
     types: './dist/assets.d.ts',
     import: './dist/assets.js'
   },
+  './assets/manifest.json': './dist/assets/earthscene/manifest.json',
+  './assets/*': './dist/assets/earthscene/*',
   './cesium': {
     types: './dist/cesium/index.d.ts',
     import: './dist/index.js'

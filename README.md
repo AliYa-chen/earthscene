@@ -4,9 +4,9 @@
 
 [English](./README.en.md) | 中文
 
-EarthScene 是一个全新的独立三维地球项目。保留完整的首页、文档、Sandcastle、示例和功能组织，在此基础上逐项将适合的能力迁移到 **CesiumJS**；Cesium 不直接提供的渲染效果以方法库或插件扩展，允许使用 **Three.js**。
+EarthScene 是面向 Web 三维地球应用的 npm 效果与插件库，目标是用少量配置把效果接入业务场景。npm 包提供已实现的效果和运行资源；业务项目传入自己创建的 Viewer、业务数据并选择参数。Viewer 生命周期、地形与影像、服务凭据及业务数据仍由应用管理。
 
-当前版本从 `0.1.0` 开始。**npm 默认入口 `earthscene` 提供 Cesium 扩展，默认导出为 `ES` 命名空间。** 完整 Three.js 引擎保留在 `earthscene/engine`；现有首页和示例继续使用该实现，尚未全量迁移到 Cesium。`earthscene/cesium` 与默认入口提供同一组扩展 API。具体边界见 [项目状态](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/project-status.md)。
+**npm 默认入口 `earthscene` 为原生 CesiumJS Viewer 提供扩展**，默认导出 `ES` 命名空间；`earthscene/cesium` 是同一组 API 的显式子路径。完整 Three.js 引擎作为独立可选入口由 `earthscene/engine` 提供，既有首页和示例仍使用它。两个入口的能力分别维护，完整引擎中的效果不代表已经迁移到 Cesium。当前范围见 [项目状态](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/project-status.md)。
 
 ## 安装到你的项目
 
@@ -44,6 +44,8 @@ const viewer = new earthscene.Viewer('viewer', options)
 ```
 
 peer 均按需选择，不会因安装 `earthscene` 自动引入另一套渲染器。最后两个工具的运行代码已包含在库构建中，完整引擎的类型声明仍使用其类型。仅 Cesium 入口不需要这些依赖。
+
+EarthScene 自身的内置贴图、Draco 解码器和 Basis 转码器由 npm 包随附并默认加载，应用构建时会解析这些资源，无需从示例目录复制静态文件。机器可读清单位于 `earthscene/assets/manifest.json`，列出的文件也可从 `earthscene/assets/<fileName>` 导入；完整引擎仍支持通过 `baseUrl` 或 `dracoDecoderPath` 指向应用自托管的资源。
 
 ### 为完整引擎增加水体
 
@@ -103,16 +105,17 @@ clouds.destroy() // 只释放此扩展的资源。
 
 也可使用 `import ES from 'earthscene'` 与 `new ES.Clouds(nativeViewer)`。需要统一管理多个插件时，使用 `new ESPluginHost(nativeViewer)`；它只管理插件，不创建或销毁原生 Viewer。
 
-当前核对版本为 CesiumJS `1.146.0`。插件不导入 Three.js，不替换地形、影像、相机或时钟配置；使用方仍负责 Cesium 的资源部署及场景生命周期。接入方式与限制见 [Cesium 扩展指南](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/cesium-migration.md)。
+当前核对版本为 CesiumJS `1.146.0`。扩展接收业务应用已经创建的 `Cesium.Viewer`，自身不创建 Viewer，也不接管地形、影像、相机、时钟和业务数据。应用仍负责 Cesium 上游资源部署及场景生命周期；接入方式与效果限制见 [Cesium 扩展指南](https://github.com/AliYa-chen/earthscene/blob/main/docs/guide/cesium-migration.md)。
 
 包名为 `earthscene`，首次公开版本为 `0.1.0`。维护者发布前运行 `pnpm release:check`；也可用 `pnpm pack --pack-destination artifacts` 生成本地安装包做验证。
 
-### 保留的工程结构
+### 能力与接入边界
 
 - npm 默认入口 `earthscene` 与 `earthscene/cesium` 均映射到 `src/cesium/index.ts`，提供可附着于原生 Cesium 场景的扩展。
 - `src/index.ts` 保留完整 Three.js 引擎的 Viewer 与领域 API，通过 `earthscene/engine` 发布；源码示例仍从 `../src` 导入。
 - `earthscene/engine/water` 按需提供完整引擎 WebGL 的 `WaterArea`；默认 Cesium 入口保持原有 API。
-- 默认渲染暂时保留 Three.js。新增 Cesium 能力以源码与验证结果为准，不把现有 API 自动视为已迁移完成。
+- 产品按 npm 模块提供可组合的效果实现和所需运行资源；应用提供宿主 Viewer、业务数据与服务配置。
+- Cesium 扩展入口与完整 Three.js 引擎入口是两条独立实现路径。新增 Cesium 能力以源码与验证结果为准，不把现有引擎 API 自动视为已迁移完成。
 - 本项目独立维护于 `AliYa-chen/earthscene`；官网为 `https://earth.2t.hk`。npm 包使用同名 `earthscene`；旧部署和 CDN 脚本已删除。
 - 部分示例仍引用外部图片、模型与地图服务，它们是数据来源。
 

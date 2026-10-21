@@ -52,7 +52,7 @@ const layer = viewer.tilesets.add({
 
 点云可以通过公开 `tileset.json` URL 或自己的 Cesium Ion 资产加载。点云案例默认使用 [Cesium 官方 RGB 测试样本](https://github.com/CesiumGS/cesium/tree/621826db344eb7f1248f6bd50ed4770563127f12/Specs/Data/Cesium3DTiles/PointCloud/PointCloudRGB)：它包含 1,000 个合成点，无需 token，使用椭球地面避免真实地形遮挡样本。面板仍支持自定义 URL 与 Ion asset id / token；Ion 资产必须对账户和 token 开放。原来的 Melbourne asset `43978` 不再作为可用的默认数据源。
 
-legacy `pnts` 点云瓦片也可能带 Draco 压缩。EarthScene 默认的 `/draco/` 完整 decoder 可以解码这类数据。
+legacy `pnts` 点云瓦片也可能带 Draco 压缩。EarthScene 默认使用 npm 包内完整 decoder 解码这类数据，无需应用复制 `/draco/` 静态目录。
 
 点云通过 Cesium 形 `pointCloudShading` 控制着色（实现跟 EarthScene 大气管线，**不是**像素级复刻 Cesium）：
 

@@ -1,6 +1,6 @@
 # 快速开始
 
-EarthScene 的 npm 默认入口 `earthscene` 是 Cesium 扩展库。应用继续使用原生 `Cesium.Viewer`，按需安装特效和插件。完整 Three.js 引擎另由 `earthscene/engine` 提供；两种入口的能力与 API 分别维护。
+EarthScene 是按 npm 模块接入的效果与插件库：包提供效果实现及其运行资源，应用传入已有 Viewer、自有业务数据并选择配置。npm 默认入口 `earthscene` 面向原生 Cesium；完整 Three.js 引擎仍由 `earthscene/engine` 独立提供。两个入口的能力分别维护，不应把完整引擎的效果视为已迁移到 Cesium。
 
 ## 安装 Cesium 扩展
 
@@ -52,6 +52,8 @@ function destroyScene() {
 
 这里关闭在线影像并使用椭球地形，因此无需 Ion token。真实影像、地形、相机和时钟均通过原生 Cesium 配置。多个插件可用 `ESPluginHost` 统一管理，其 `destroy()` 只释放插件。参数、生命周期和当前视觉限制见 [Cesium 扩展指南](./cesium-migration.md)。
 
+EarthScene 扩展只附着到已有 Viewer 并管理自身资源；它不托管 Viewer、地图服务、令牌或业务数据。Cesium 自身的 `Assets`、`Workers`、`Widgets`、`ThirdParty` 文件仍按 Cesium 的部署要求由宿主项目提供。这与 EarthScene 包内资源不同。
+
 ## 可选：完整 Three.js 引擎
 
 保留的完整引擎为数字地球、数字孪生与三维地图提供统一领域 API；它与上面的 Cesium 扩展入口使用不同的 Viewer 和渲染链路，完整示例中的效果并不表示已由 Cesium 实现。
@@ -99,17 +101,18 @@ const viewer = new earthscene.Viewer('viewer', {
 })
 ```
 
-### 资源路径
+### 包内运行资源
 
-EarthScene 默认从 `/draco/` 加载 **完整** Draco 解码器（同时支持 glTF mesh 和点云）。应用侧需要把 three.js 的 `examples/jsm/libs/draco/` 解码器文件放到对应公开目录。如果你的路径不是 `/draco/`，通过 `dracoDecoderPath` 指定：
+完整引擎需要的内置纹理、完整 Draco 解码器（支持 glTF 网格和点云）及 Basis 转码器随 npm 包提供，默认由模块加载。应用不需要从 Three.js 示例目录复制这些静态文件；安装或升级包即可获得对应资源。若需统一改为自托管目录，可在创建 Viewer 前设置完整引擎的 `baseUrl`：
+
+资源的机器可读清单可从 `earthscene/assets/manifest.json` 获取，清单中的 `fileName` 也可直接拼为 `earthscene/assets/<fileName>` 导入。正常使用不需要单独导入资源文件；`baseUrl` 仅用于主动选择自托管目录。
 
 ```ts
-const viewer = new earthscene.Viewer(container, {
-  dracoDecoderPath: '/assets/draco/'
-})
+earthscene.baseUrl = '/earthscene-assets/'
+const viewer = new earthscene.Viewer(container, options)
 ```
 
-`/draco/gltf/` 是体积更小的 glTF 专用 decoder，只能解三角网格，**不能**解 Draco 压缩的点云（`.pnts`）。只有确定不加载点云时才改用它。
+覆盖路径时，应用需在该目录提供对应的资源文件。若只需替换 Draco 解码器，则在 `Viewer` 选项中设置 `dracoDecoderPath`。`/draco/gltf/` 是体积更小的 glTF 专用 decoder，只能解三角网格，**不能**解 Draco 压缩的点云（`.pnts`）；默认随包提供的完整 decoder 同时支持两者。
 
 ### 销毁
 

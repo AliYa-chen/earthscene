@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-21
+
+- 将云层/大气、水体法线及 Three.js 所需 Draco/Basis 解码资源纳入 npm 包；默认无需从示例复制资源目录。
+- 新增 `earthscene/assets/manifest.json` 与 `earthscene/assets/<fileName>` 公开资源路径，并保留完整引擎资源根路径覆盖能力。
+- 完整引擎和 3D Tiles 共享内置 Draco/Basis loader；水体法线纹理也遵循统一资源配置。
+- 更新 Cesium 与完整引擎的插件定位、资源使用说明及 Draco 默认行为文档。
+
 ## [0.1.0] - 2026-10-20
 
 - 建立 EarthScene 独立项目与 Git 仓库。

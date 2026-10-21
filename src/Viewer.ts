@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
 import { getSunDirectionECEF } from '@takram/three-atmosphere'
 import { Camera } from './Camera'
 import { Clock, type ClockChangeEvent } from './Clock'
@@ -74,6 +75,11 @@ import {
   resolveViewerSceneOptions
 } from './ViewerOptionsResolver'
 import { WidgetManager } from './widgets/WidgetManager'
+import {
+  createBuiltinDracoLoader,
+  createBuiltinKTX2Loader,
+  initializeBuiltinKTX2Support
+} from './loaders/builtinTranscoders'
 import type {
   CartographicFrameOptions,
   FlyToTargetOptions,
@@ -443,6 +449,7 @@ export class Viewer {
   private readonly threeCamera: THREE.PerspectiveCamera
   private readonly rendererAdapter: EarthSceneRendererAdapter
   private readonly dracoLoader: DRACOLoader
+  private readonly ktx2Loader: KTX2Loader
   private readonly transparentOverlayTexture: THREE.CanvasTexture
   private readonly cameraCartographicScratch = { lat: 0, lon: 0, height: 0, azimuth: 0, elevation: 0, roll: 0 }
   private readonly gltfLoader: GLTFLoader
@@ -537,7 +544,16 @@ export class Viewer {
           this.resize()
         }
       })
-      this.ready = this.rendererAdapter.ready
+      this.dracoLoader = createBuiltinDracoLoader(options.dracoDecoderPath)
+      constructionScope.defer(() => this.dracoLoader.dispose())
+      this.ktx2Loader = createBuiltinKTX2Loader()
+      constructionScope.defer(() => this.ktx2Loader.dispose())
+      this.ready = initializeBuiltinKTX2Support(
+        this.ktx2Loader,
+        this.renderer.raw,
+        this.rendererAdapter.ready,
+        () => this.isDestroyed
+      )
       void this.ready.catch(() => undefined)
       this.rendererAdapter.setPixelRatio(this.currentResolutionScale)
       this.rendererAdapter.setSize(width, height)
@@ -634,11 +650,9 @@ export class Viewer {
       this.clock.on('change', this.handleClockChange)
       constructionScope.defer(() => this.clock.off('change', this.handleClockChange))
 
-      this.dracoLoader = new DRACOLoader()
-      constructionScope.defer(() => this.dracoLoader.dispose())
-      this.dracoLoader.setDecoderPath(options.dracoDecoderPath ?? '/draco/')
       this.gltfLoader = new GLTFLoader()
       this.gltfLoader.setDRACOLoader(this.dracoLoader)
+      this.gltfLoader.setKTX2Loader(this.ktx2Loader)
 
       this.tilesetManager = new TilesetManager({
         scene: this.scene.raw,
@@ -646,6 +660,7 @@ export class Viewer {
         renderer: this.renderer.raw,
         useWebGPUCompatibleSurfaceOverlay: this.renderer.type === 'webgpu',
         dracoLoader: this.dracoLoader,
+        ktx2Loader: this.ktx2Loader,
         transparentOverlayTexture: this.transparentOverlayTexture,
         terrain: options.terrain,
         surfaceMaterialMode: resolveSurfaceMaterialMode(
@@ -1196,6 +1211,7 @@ export class Viewer {
     this.tilesetManager.dispose()
     this.controls.dispose()
     this.dracoLoader.dispose()
+    this.ktx2Loader.dispose()
     this.rendererAdapter.dispose()
 
     if (this.renderer.raw.domElement.parentElement) {
